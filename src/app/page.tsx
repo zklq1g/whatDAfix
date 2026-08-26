@@ -24,11 +24,11 @@ const portals = [
   },
   {
     tier: "Tier 2",
-    title: "Worker Portal",
+    title: "Department Portal",
     subtitle: "Execute & Prove Work",
     description:
       "Your task queue. Anti-spoofing GPS geofencing enforces physical site visits. Upload 'After' evidence to close tickets. SLA is always live.",
-    href: "/worker",
+    href: "/department",
     icon: HardHat,
     accent: "#FF9F43",      // orange — urgency/work
     accentBg: "#FF9F4318",

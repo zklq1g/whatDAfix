@@ -20,6 +20,8 @@ import {
   Upload,
 } from "lucide-react";
 
+import { supabase } from "@/lib/supabase";
+
 // ----------------------------------------------------------------------------------
 // COLOR SYSTEM (Master Palette)
 // ----------------------------------------------------------------------------------
@@ -43,7 +45,7 @@ const COLORS = {
 // ----------------------------------------------------------------------------------
 
 type FlowState = "camera" | "preview" | "locating" | "scanning" | "result";
-type ToastType = "success" | "error" | "info";
+type ToastType = "success" | "error" | "info" | "loading";
 
 interface AIResult {
   issue: string;
@@ -83,6 +85,7 @@ export default function CitizenPortal() {
   const [demoForceNew, setDemoForceNew] = useState(false);
 
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedFile, setCapturedFile] = useState<File | Blob | null>(null);
   const [location, setLocation] = useState<Coordinates | null>(null);
   const [scanLogs, setScanLogs] = useState<string[]>([]);
   const [aiResult, setAiResult] = useState<AIResult | null>(null);
@@ -95,14 +98,29 @@ export default function CitizenPortal() {
   const hiddenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scanTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  // Auto-login citizen anonymously on mount
+  useEffect(() => {
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        await supabase.auth.signInAnonymously();
+      }
+    };
+    initAuth();
+  }, []);
+
   // --------------------------------------------------------------------------------
   // TOAST HELPERS
   // --------------------------------------------------------------------------------
 
   const showToast = useCallback((message: string, type: ToastType = "info") => {
     setToast({ message, type });
-    window.setTimeout(() => setToast(null), 3500);
+    if (type !== "loading") {
+      window.setTimeout(() => setToast(null), 3500);
+    }
   }, []);
+
+  const hideToast = useCallback(() => setToast(null), []);
 
   // --------------------------------------------------------------------------------
   // TIMER LOGIC (Anti-spoofing 30s window)
@@ -142,8 +160,9 @@ export default function CitizenPortal() {
   // STATE 1 -> STATE 2 : LIVE CAPTURE (from in-browser video preview)
   // --------------------------------------------------------------------------------
 
-  const handleLiveCapture = (dataUrl: string) => {
+  const handleLiveCapture = (dataUrl: string, blob: Blob) => {
     setCapturedImage(dataUrl);
+    setCapturedFile(blob);
     setFlowState("preview");
     startHiddenTimer();
   };
@@ -153,6 +172,7 @@ export default function CitizenPortal() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setCapturedFile(file);
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
@@ -261,7 +281,7 @@ export default function CitizenPortal() {
   // --------------------------------------------------------------------------------
 
   const decideResult = () => {
-    const isNew = demoForceNew ? true : Math.random() < 0.25;
+    const isNew = !demoForceNew;
 
     setResultType(isNew ? "new" : "cluster");
     if (isNew) {
@@ -276,14 +296,70 @@ export default function CitizenPortal() {
     setTimeout(() => resetToCamera(), 1400);
   };
 
-  const handleSubmitTicket = () => {
-    console.log("network(fake): POST /reports/create", {
-      location,
-      aiResult,
-      ticketNumber,
-    });
-    showToast(`Ticket #${ticketNumber} created and routed to PWD.`, "success");
-    setTimeout(() => resetToCamera(), 1400);
+  const handleSubmitTicket = async () => {
+    if (!aiResult || !location || !capturedFile) return;
+
+    setConfirming(true);
+    showToast("Securing evidence and reporting to municipality...", "loading");
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        // Try anonymous sign-in if no session
+        await supabase.auth.signInAnonymously();
+        const { data: { user: newUser } } = await supabase.auth.getUser();
+        if (!newUser) throw new Error("Not authenticated");
+      }
+
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) throw new Error("Not authenticated");
+
+      // Upload evidence image
+      const ext = capturedFile instanceof File ? capturedFile.name.split(".").pop() : "jpg";
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext || "jpg"}`;
+      const filePath = `${currentUser.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("civic-evidence")
+        .upload(filePath, capturedFile, { contentType: "image/jpeg" });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("civic-evidence")
+        .getPublicUrl(filePath);
+
+      // Create ticket in DB
+      const { data: ticketData, error: dbError } = await supabase
+        .from("tickets")
+        .insert({
+          created_by: currentUser.id,
+          location: `POINT(${location.lng} ${location.lat})`,
+          category: aiResult.issue,
+          severity: aiResult.severity,
+          before_image_url: publicUrl,
+          ai_confidence: 0.94,
+          ai_label: aiResult.issue,
+          status: "open",
+        })
+        .select("id")
+        .single();
+
+      if (dbError) throw dbError;
+
+      const realId = ticketData.id.substring(0, 8).toUpperCase();
+      setTicketNumber(parseInt(realId, 16) || ticketNumber);
+
+      hideToast();
+      showToast(`Ticket #${realId} created and routed to PWD.`, "success");
+      setTimeout(() => resetToCamera(), 2000);
+    } catch (err) {
+      console.error(err);
+      hideToast();
+      showToast("Submission failed. Please check your connection and try again.", "error");
+    } finally {
+      setConfirming(false);
+    }
   };
 
   // --------------------------------------------------------------------------------
@@ -294,6 +370,7 @@ export default function CitizenPortal() {
     clearHiddenTimer();
     clearScanTimers();
     setCapturedImage(null);
+    setCapturedFile(null);
     setLocation(null);
     setScanLogs([]);
     setAiResult(null);
@@ -437,14 +514,8 @@ function TopBar({
         <button
           onClick={() => setDemoForceNew(!demoForceNew)}
           className="flex items-center gap-1.5 group"
-          title="Demo: Force New Ticket"
+          title="Demo: Toggle Result"
         >
-          <span
-            className="text-[9px] uppercase tracking-wide max-w-[70px] text-right leading-tight transition-colors"
-            style={{ color: COLORS.textMeta }}
-          >
-            Force New Ticket
-          </span>
           <div
             className="w-9 h-5 rounded-full flex items-center px-0.5 transition-colors duration-200"
             style={{
@@ -500,6 +571,11 @@ function ToastBanner({ toast }: { toast: ToastState }) {
       border: "rgba(96, 165, 250, 0.35)",
       text: "#93C5FD",
     },
+    loading: {
+      bg: "rgba(250, 204, 21, 0.1)",
+      border: "rgba(250, 204, 21, 0.35)",
+      text: "#FDE047",
+    },
   };
 
   const s = styleMap[toast.type];
@@ -509,13 +585,14 @@ function ToastBanner({ toast }: { toast: ToastState }) {
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="absolute top-16 left-4 right-4 z-50 rounded-xl px-4 py-3 text-sm font-medium shadow-lg"
+      className="absolute top-16 left-4 right-4 z-50 rounded-xl px-4 py-3 text-sm font-medium shadow-lg flex items-center gap-2"
       style={{
         backgroundColor: s.bg,
         border: `1px solid ${s.border}`,
         color: s.text,
       }}
     >
+      {toast.type === "loading" && <Loader2 size={15} className="animate-spin shrink-0" />}
       {toast.message}
     </motion.div>
   );
@@ -534,7 +611,7 @@ function CameraViewState({
 }: {
   flashOn: boolean;
   setFlashOn: (v: boolean) => void;
-  onCapture: (dataUrl: string) => void;
+  onCapture: (dataUrl: string, blob: Blob) => void;
   onUseFallback: () => void;
   showToast: (msg: string, type?: ToastType) => void;
 }) {
@@ -628,7 +705,13 @@ function CameraViewState({
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-    onCapture(dataUrl);
+    canvas.toBlob(
+      (blob) => {
+        if (blob) onCapture(dataUrl, blob);
+      },
+      "image/jpeg",
+      0.9
+    );
   };
 
   return (

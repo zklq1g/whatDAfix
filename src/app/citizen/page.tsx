@@ -303,25 +303,21 @@ export default function CitizenPortal() {
     showToast("Securing evidence and reporting to municipality...", "loading");
 
     try {
-      // Ensure we have an authenticated session
-      let { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: 'demo@whatdafix.local',
-          password: 'demopassword123',
-        });
-        
-        if (signInError) {
-          throw new Error(`Demo sign-in failed: ${signInError.message}`);
-        }
-        ({ data: { user } } = await supabase.auth.getUser());
-        if (!user) throw new Error("Sign-in succeeded but user is still null.");
+      // Bypassing auth for demo: we use a random session ID for storage
+      // and the backend RPC defaults to a demo user ID if auth is missing.
+      const sessionId =
+        typeof window !== "undefined" && localStorage.getItem("demoSessionId")
+          ? localStorage.getItem("demoSessionId")!
+          : Math.random().toString(36).substring(2);
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("demoSessionId", sessionId);
       }
 
       // Upload evidence image
       const ext = capturedFile instanceof File ? capturedFile.name.split(".").pop() : "jpg";
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext || "jpg"}`;
-      const filePath = `${user.id}/${fileName}`;
+      const filePath = `demo-${sessionId}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("civic-evidence")

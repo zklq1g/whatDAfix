@@ -684,7 +684,7 @@ function CameraViewState({
 
   // Best-effort torch toggle button handler
   const toggleFlash = () => {
-    setFlashOn((prev) => !prev);
+    setFlashOn(!flashOn);
     // applyConstraints is handled by the useEffect above
   };
 

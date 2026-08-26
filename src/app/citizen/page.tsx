@@ -353,10 +353,11 @@ export default function CitizenPortal() {
       hideToast();
       showToast(`Ticket #${realId} created and routed to PWD.`, "success");
       setTimeout(() => resetToCamera(), 2000);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Submission error:", err);
       hideToast();
-      showToast("Submission failed. Please check your connection and try again.", "error");
+      const msg = err?.message || err?.error_description || JSON.stringify(err);
+      showToast(`Error: ${msg}`, "error");
     } finally {
       setConfirming(false);
     }
@@ -673,21 +674,26 @@ function CameraViewState({
     };
   }, []);
 
-  // Best-effort real torch toggle (falls back silently if unsupported)
-  const toggleFlash = async () => {
-    const nextState = !flashOn;
-    setFlashOn(nextState);
+  // Apply torch constraint whenever flashOn or cameraReady changes
+  useEffect(() => {
+    const applyTorch = async () => {
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (!track || !cameraReady) return;
+      try {
+        await track.applyConstraints({
+          advanced: [{ torch: flashOn } as any],
+        });
+      } catch {
+        // torch not supported on this device
+      }
+    };
+    applyTorch();
+  }, [flashOn, cameraReady]);
 
-    const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) return;
-
-    try {
-      await track.applyConstraints({
-        advanced: [{ torch: nextState } as any],
-      });
-    } catch {
-      // Torch not supported on this device/browser — UI-only fallback.
-    }
+  // Best-effort torch toggle button handler
+  const toggleFlash = () => {
+    setFlashOn((prev) => !prev);
+    // applyConstraints is handled by the useEffect above
   };
 
   const [capturing, setCapturing] = useState(false);
@@ -701,16 +707,28 @@ function CameraViewState({
 
     setCapturing(true);
     // Brief white flash overlay — fires regardless of torch support
-    setTimeout(() => setCapturing(false), 150);
+    setTimeout(() => setCapturing(false), 180);
 
     const track = streamRef.current?.getVideoTracks()[0];
 
-    // Try ImageCapture API first — it natively fires the hardware flash
+    // Ensure torch is on right before capture (belt-and-suspenders)
+    if (flashOn && track) {
+      try {
+        await track.applyConstraints({ advanced: [{ torch: true } as any] });
+      } catch { /* ignore */ }
+    }
+
+    // Try ImageCapture API — fires hardware flash if available
     if (track && typeof (window as any).ImageCapture !== "undefined") {
       try {
         const imageCapture = new (window as any).ImageCapture(track);
+        const photoCapabilities = await imageCapture.getPhotoCapabilities().catch(() => null);
+        const canFlash = photoCapabilities?.fillLightMode?.includes("flash");
+
         const blob: Blob = await imageCapture.takePhoto(
-          flashOn ? { fillLightMode: "flash" } : { fillLightMode: "off" }
+          flashOn && canFlash
+            ? { fillLightMode: "flash" }
+            : { fillLightMode: "off" }
         );
         const dataUrl = await new Promise<string>((resolve) => {
           const reader = new FileReader();
@@ -720,11 +738,11 @@ function CameraViewState({
         onCapture(dataUrl, blob);
         return;
       } catch {
-        // ImageCapture failed — fall through to canvas path
+        // ImageCapture failed or not supported — fall through to canvas
       }
     }
 
-    // Canvas fallback (torch stays on via applyConstraints if supported)
+    // Canvas fallback (torch stays on via applyConstraints)
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;

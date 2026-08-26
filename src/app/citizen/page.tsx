@@ -14,12 +14,11 @@ import {
   Send,
   ArrowUp,
   User,
-  ScanLine,
   Radio,
+  ScanLine,
+  VideoOff,
+  Upload,
 } from "lucide-react";
-
-import { Logo } from "@/components/Logo";
-import { supabase } from "@/lib/supabase";
 
 // ----------------------------------------------------------------------------------
 // COLOR SYSTEM (Master Palette)
@@ -44,7 +43,7 @@ const COLORS = {
 // ----------------------------------------------------------------------------------
 
 type FlowState = "camera" | "preview" | "locating" | "scanning" | "result";
-type ToastType = "success" | "error" | "info" | "loading";
+type ToastType = "success" | "error" | "info";
 
 interface AIResult {
   issue: string;
@@ -84,29 +83,17 @@ export default function CitizenPortal() {
   const [demoForceNew, setDemoForceNew] = useState(false);
 
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null); // Real file for upload
   const [location, setLocation] = useState<Coordinates | null>(null);
   const [scanLogs, setScanLogs] = useState<string[]>([]);
   const [aiResult, setAiResult] = useState<AIResult | null>(null);
   const [resultType, setResultType] = useState<"cluster" | "new" | null>(null);
-  const [ticketNumber, setTicketNumber] = useState<string | null>(null);
+  const [ticketNumber, setTicketNumber] = useState<number | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fallbackFileInputRef = useRef<HTMLInputElement>(null);
   const hiddenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scanTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  // Auto-login citizen anonymously on mount
-  useEffect(() => {
-    const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        await supabase.auth.signInAnonymously();
-      }
-    };
-    initAuth();
-  }, []);
 
   // --------------------------------------------------------------------------------
   // TOAST HELPERS
@@ -114,13 +101,7 @@ export default function CitizenPortal() {
 
   const showToast = useCallback((message: string, type: ToastType = "info") => {
     setToast({ message, type });
-    if (type !== "loading") {
-      window.setTimeout(() => setToast(null), 3500);
-    }
-  }, []);
-
-  const hideToast = useCallback(() => {
-    setToast(null);
+    window.setTimeout(() => setToast(null), 3500);
   }, []);
 
   // --------------------------------------------------------------------------------
@@ -158,23 +139,28 @@ export default function CitizenPortal() {
   }, []);
 
   // --------------------------------------------------------------------------------
-  // STATE 1 -> STATE 2 : CAPTURE
+  // STATE 1 -> STATE 2 : LIVE CAPTURE (from in-browser video preview)
   // --------------------------------------------------------------------------------
 
-  const handleCaptureClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    setFile(selectedFile);
-    const objectUrl = URL.createObjectURL(selectedFile);
-    setCapturedImage(objectUrl);
+  const handleLiveCapture = (dataUrl: string) => {
+    setCapturedImage(dataUrl);
     setFlowState("preview");
     startHiddenTimer();
+  };
 
+  // Fallback path (only shown if getUserMedia fails/denied)
+  const handleFallbackFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setCapturedImage(dataUrl);
+      setFlowState("preview");
+      startHiddenTimer();
+    };
+    reader.readAsDataURL(file);
     e.target.value = "";
   };
 
@@ -279,74 +265,25 @@ export default function CitizenPortal() {
 
     setResultType(isNew ? "new" : "cluster");
     if (isNew) {
-      setTicketNumber(Math.floor(1000 + Math.random() * 9000).toString());
+      setTicketNumber(Math.floor(1000 + Math.random() * 9000));
     }
     setFlowState("result");
   };
 
   const handleUpvote = () => {
-    // In a real app, we'd log the upvote to Supabase
+    console.log("network(fake): POST /reports/upvote", { location, aiResult });
     showToast("Upvoted! SLA urgency increased.", "success");
     setTimeout(() => resetToCamera(), 1400);
   };
 
-  const handleSubmitTicket = async () => {
-    if (!aiResult || !location || !file) return;
-    
-    setConfirming(true);
-    showToast("Securing evidence and reporting to municipality...", "loading");
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Upload evidence
-      const fileExt = file.name.split('.').pop() || 'jpg';
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('civic-evidence')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('civic-evidence')
-        .getPublicUrl(filePath);
-
-      // Create ticket
-      const { data: ticketData, error: dbError } = await supabase
-        .from('tickets')
-        .insert({
-          created_by: user.id,
-          location: `POINT(${location.lng} ${location.lat})`,
-          category: aiResult.issue,
-          severity: aiResult.severity,
-          before_image_url: publicUrl,
-          ai_confidence: 0.94,
-          ai_label: aiResult.issue,
-          status: 'open'
-        })
-        .select('id')
-        .single();
-
-      if (dbError) throw dbError;
-
-      const realId = ticketData.id.substring(0, 8).toUpperCase();
-      setTicketNumber(realId);
-      
-      hideToast();
-      showToast(`Ticket #${realId} created and routed to PWD.`, "success");
-      setTimeout(() => resetToCamera(), 2000);
-
-    } catch (err) {
-      console.error(err);
-      hideToast();
-      showToast("Submission failed. Please check connection and try again.", "error");
-    } finally {
-      setConfirming(false);
-    }
+  const handleSubmitTicket = () => {
+    console.log("network(fake): POST /reports/create", {
+      location,
+      aiResult,
+      ticketNumber,
+    });
+    showToast(`Ticket #${ticketNumber} created and routed to PWD.`, "success");
+    setTimeout(() => resetToCamera(), 1400);
   };
 
   // --------------------------------------------------------------------------------
@@ -357,7 +294,6 @@ export default function CitizenPortal() {
     clearHiddenTimer();
     clearScanTimers();
     setCapturedImage(null);
-    setFile(null);
     setLocation(null);
     setScanLogs([]);
     setAiResult(null);
@@ -398,7 +334,9 @@ export default function CitizenPortal() {
                 key="camera"
                 flashOn={flashOn}
                 setFlashOn={setFlashOn}
-                onCapture={handleCaptureClick}
+                onCapture={handleLiveCapture}
+                onUseFallback={() => fallbackFileInputRef.current?.click()}
+                showToast={showToast}
               />
             )}
 
@@ -434,18 +372,18 @@ export default function CitizenPortal() {
                   ticketNumber={ticketNumber}
                   onUpvote={handleUpvote}
                   onSubmit={handleSubmitTicket}
-                  confirming={confirming}
                 />
               )}
           </AnimatePresence>
         </div>
 
+        {/* Fallback file input — only used if live camera access fails */}
         <input
-          ref={fileInputRef}
+          ref={fallbackFileInputRef}
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={handleFileChange}
+          onChange={handleFallbackFileChange}
           className="hidden"
         />
       </div>
@@ -473,10 +411,26 @@ function TopBar({
       }}
     >
       <div className="flex items-center gap-2">
-        <Logo className="w-24 h-6" />
-        <span className="text-[10px] uppercase font-mono-tech mt-1" style={{ color: COLORS.textMeta }}>
-          Citizen
-        </span>
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{
+            backgroundColor: "rgba(52, 211, 153, 0.08)",
+            border: "1px solid rgba(52, 211, 153, 0.3)",
+          }}
+        >
+          <span className="text-emerald-400 font-bold text-sm">wD</span>
+        </div>
+        <div className="flex flex-col leading-tight">
+          <span
+            className="text-sm font-semibold tracking-tight"
+            style={{ color: COLORS.textHeading }}
+          >
+            whatDAfix
+          </span>
+          <span className="text-[10px]" style={{ color: COLORS.textMeta }}>
+            Citizen Portal
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -546,11 +500,6 @@ function ToastBanner({ toast }: { toast: ToastState }) {
       border: "rgba(96, 165, 250, 0.35)",
       text: "#93C5FD",
     },
-    loading: {
-      bg: "rgba(250, 204, 21, 0.1)",
-      border: "rgba(250, 204, 21, 0.35)",
-      text: "#FDE047",
-    },
   };
 
   const s = styleMap[toast.type];
@@ -560,32 +509,128 @@ function ToastBanner({ toast }: { toast: ToastState }) {
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="absolute top-16 left-4 right-4 z-50 rounded-xl px-4 py-3 text-sm font-medium shadow-lg flex items-center gap-2"
+      className="absolute top-16 left-4 right-4 z-50 rounded-xl px-4 py-3 text-sm font-medium shadow-lg"
       style={{
         backgroundColor: s.bg,
         border: `1px solid ${s.border}`,
         color: s.text,
       }}
     >
-      {toast.type === "loading" && <Loader2 size={16} className="animate-spin shrink-0" />}
       {toast.message}
     </motion.div>
   );
 }
 
 // ====================================================================================
-// STATE 1: CAMERA VIEW
+// STATE 1: LIVE CAMERA VIEW (getUserMedia)
 // ====================================================================================
 
 function CameraViewState({
   flashOn,
   setFlashOn,
   onCapture,
+  onUseFallback,
+  showToast,
 }: {
   flashOn: boolean;
   setFlashOn: (v: boolean) => void;
-  onCapture: () => void;
+  onCapture: (dataUrl: string) => void;
+  onUseFallback: () => void;
+  showToast: (msg: string, type?: ToastType) => void;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Start camera stream on mount, stop it on unmount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function startCamera() {
+      setCameraError(null);
+      setCameraReady(false);
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError(
+          "Camera API unsupported in this browser (requires HTTPS)."
+        );
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setCameraReady(true);
+      } catch (err) {
+        console.log("Camera access failed:", err);
+        setCameraError(
+          "Camera access denied or unavailable. Use upload fallback below."
+        );
+      }
+    }
+
+    startCamera();
+
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
+  // Best-effort real torch toggle (falls back silently if unsupported)
+  const toggleFlash = async () => {
+    const nextState = !flashOn;
+    setFlashOn(nextState);
+
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: nextState } as any],
+      });
+    } catch {
+      // Torch not supported on this device/browser — UI-only fallback.
+    }
+  };
+
+  const handleCaptureClick = () => {
+    const video = videoRef.current;
+    if (!video || !cameraReady) {
+      showToast("Camera not ready yet.", "error");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    onCapture(dataUrl);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -596,49 +641,91 @@ function CameraViewState({
     >
       <div
         className="relative flex-1 flex items-center justify-center overflow-hidden"
-        style={{
-          background: `linear-gradient(to bottom, ${COLORS.bgSecondary}, ${COLORS.bgMain})`,
-        }}
+        style={{ backgroundColor: COLORS.bgSecondary }}
       >
-        <div className="absolute inset-8 pointer-events-none">
-          <Corner className="top-0 left-0 border-t-2 border-l-2" />
-          <Corner className="top-0 right-0 border-t-2 border-r-2" />
-          <Corner className="bottom-0 left-0 border-b-2 border-l-2" />
-          <Corner className="bottom-0 right-0 border-b-2 border-r-2" />
-        </div>
+        {/* Live video preview */}
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ display: cameraError ? "none" : "block" }}
+        />
 
-        <div
-          className="flex flex-col items-center gap-3"
-          style={{ color: COLORS.textMeta }}
-        >
-          <Camera size={40} strokeWidth={1.2} />
-          <p className="text-xs tracking-wide">Align the issue within frame</p>
-        </div>
+        {/* Loading state before stream is ready */}
+        {!cameraError && !cameraReady && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+            style={{ backgroundColor: COLORS.bgSecondary }}
+          >
+            <Loader2 size={32} className="animate-spin" style={{ color: "#60A5FA" }} />
+            <p className="text-xs" style={{ color: COLORS.textSecondary }}>
+              Requesting camera access...
+            </p>
+          </div>
+        )}
 
-        <button
-          onClick={() => setFlashOn(!flashOn)}
-          className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-colors"
-          style={{
-            backgroundColor: flashOn
-              ? "rgba(250, 204, 21, 0.12)"
-              : "rgba(13, 25, 34, 0.7)",
-            border: flashOn
-              ? "1px solid rgba(250, 204, 21, 0.5)"
-              : `1px solid ${COLORS.border}`,
-            color: flashOn ? "#FDE047" : COLORS.textSecondary,
-          }}
-        >
-          {flashOn ? <Zap size={18} /> : <ZapOff size={18} />}
-        </button>
+        {/* Error / permission denied fallback */}
+        {cameraError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
+            <VideoOff size={36} style={{ color: COLORS.textMeta }} />
+            <p className="text-sm" style={{ color: COLORS.textBody }}>
+              {cameraError}
+            </p>
+            <button
+              onClick={onUseFallback}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium"
+              style={{
+                backgroundColor: COLORS.panelElevated,
+                border: `1px solid ${COLORS.border}`,
+                color: COLORS.textHeading,
+              }}
+            >
+              <Upload size={15} />
+              Upload Photo Instead
+            </button>
+          </div>
+        )}
+
+        {/* Corner brackets overlay (only when camera is live) */}
+        {cameraReady && !cameraError && (
+          <div className="absolute inset-8 pointer-events-none">
+            <Corner className="top-0 left-0 border-t-2 border-l-2" />
+            <Corner className="top-0 right-0 border-t-2 border-r-2" />
+            <Corner className="bottom-0 left-0 border-b-2 border-l-2" />
+            <Corner className="bottom-0 right-0 border-b-2 border-r-2" />
+          </div>
+        )}
+
+        {/* Flashlight toggle */}
+        {cameraReady && !cameraError && (
+          <button
+            onClick={toggleFlash}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10"
+            style={{
+              backgroundColor: flashOn
+                ? "rgba(250, 204, 21, 0.15)"
+                : "rgba(8, 18, 26, 0.6)",
+              border: flashOn
+                ? "1px solid rgba(250, 204, 21, 0.5)"
+                : `1px solid ${COLORS.border}`,
+              color: flashOn ? "#FDE047" : COLORS.textSecondary,
+            }}
+          >
+            {flashOn ? <Zap size={18} /> : <ZapOff size={18} />}
+          </button>
+        )}
       </div>
 
+      {/* Capture control */}
       <div
         className="pb-10 pt-6 flex items-center justify-center"
         style={{ backgroundColor: COLORS.bgMain }}
       >
         <button
-          onClick={onCapture}
-          className="w-20 h-20 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+          onClick={handleCaptureClick}
+          disabled={!cameraReady || !!cameraError}
+          className="w-20 h-20 rounded-full flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40"
           style={{
             border: `4px solid ${COLORS.panelElevated}`,
             backgroundColor: COLORS.textHeading,
@@ -867,16 +954,14 @@ function ResultState({
   ticketNumber,
   onUpvote,
   onSubmit,
-  confirming,
 }: {
   image: string;
   resultType: "cluster" | "new";
   aiResult: AIResult;
   location: Coordinates;
-  ticketNumber: string | null;
+  ticketNumber: number | null;
   onUpvote: () => void;
   onSubmit: () => void;
-  confirming: boolean;
 }) {
   return (
     <motion.div
@@ -915,8 +1000,7 @@ function ResultState({
         {resultType === "cluster" ? (
           <button
             onClick={onUpvote}
-            disabled={confirming}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform"
             style={{ backgroundColor: "#FB923C", color: "#1A0E02" }}
           >
             <ArrowUp size={16} />
@@ -925,12 +1009,11 @@ function ResultState({
         ) : (
           <button
             onClick={onSubmit}
-            disabled={confirming}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform"
             style={{ backgroundColor: "#34D399", color: "#04140D" }}
           >
-            {confirming ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            {confirming ? "Uploading Evidence..." : "Submit to Municipality"}
+            <Send size={16} />
+            Submit to Municipality
           </button>
         )}
       </div>
@@ -984,7 +1067,7 @@ function NewTicketCard({
 }: {
   aiResult: AIResult;
   location: Coordinates;
-  ticketNumber: string | null;
+  ticketNumber: number | null;
 }) {
   const severityLabel =
     aiResult.severity >= 80 ? "High" : aiResult.severity >= 60 ? "Moderate" : "Low";

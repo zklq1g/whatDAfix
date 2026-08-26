@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { motion, type Variants } from "framer-motion"
 import { Camera, HardHat, ShieldCheck, Map, ArrowRight, Activity } from "lucide-react"
+import { Logo } from "@/components/Logo"
 
 
 const portals = [
@@ -84,7 +85,7 @@ export default function LandingPage() {
       {/* ── Top bar ─────────────────────────────────────── */}
       <nav className="border-b border-[#1C303B] px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-[#00D4FF] font-bold text-lg tracking-tight">whatDAfix</span>
+          <Logo />
           <span className="text-[#566B76] text-xs font-mono-tech hidden sm:inline">
             CIVIC ACCOUNTABILITY ENGINE v1.0
           </span>

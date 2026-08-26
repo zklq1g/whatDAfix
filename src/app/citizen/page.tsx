@@ -10,6 +10,7 @@ import { Camera, MapPin, Loader2, CheckCircle2, AlertTriangle } from "lucide-rea
 import { Tracker } from "@/components/Tracker" 
 
 import { supabase } from "@/lib/supabase"
+import { Logo } from "@/components/Logo"
 
 export default function CitizenPortal() {
   const [image, setImage] = useState<string | null>(null)
@@ -127,7 +128,7 @@ export default function CitizenPortal() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-50 p-4 flex flex-col items-center">
       <header className="w-full max-w-md mb-6 text-center">
-        <h1 className="text-2xl font-bold tracking-tight">whatDAfix</h1>
+        <Logo className="mx-auto" />
         <p className="text-zinc-400 text-sm">Report Civic Issues. Zero Spam.</p>
       </header>
 

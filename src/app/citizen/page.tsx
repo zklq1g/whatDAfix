@@ -303,21 +303,18 @@ export default function CitizenPortal() {
     showToast("Securing evidence and reporting to municipality...", "loading");
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Ensure we have an authenticated session (anonymous is fine)
+      let { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        // Try anonymous sign-in if no session
         await supabase.auth.signInAnonymously();
-        const { data: { user: newUser } } = await supabase.auth.getUser();
-        if (!newUser) throw new Error("Not authenticated");
+        ({ data: { user } } = await supabase.auth.getUser());
+        if (!user) throw new Error("Not authenticated");
       }
-
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (!currentUser) throw new Error("Not authenticated");
 
       // Upload evidence image
       const ext = capturedFile instanceof File ? capturedFile.name.split(".").pop() : "jpg";
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext || "jpg"}`;
-      const filePath = `${currentUser.id}/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("civic-evidence")
@@ -329,25 +326,20 @@ export default function CitizenPortal() {
         .from("civic-evidence")
         .getPublicUrl(filePath);
 
-      // Create ticket in DB
-      const { data: ticketData, error: dbError } = await supabase
-        .from("tickets")
-        .insert({
-          created_by: currentUser.id,
-          location: `POINT(${location.lng} ${location.lat})`,
-          category: aiResult.issue,
-          severity: aiResult.severity,
-          before_image_url: publicUrl,
-          ai_confidence: 0.94,
-          ai_label: aiResult.issue,
-          status: "open",
-        })
-        .select("id")
-        .single();
+      // Create ticket via RPC (handles PostGIS geometry properly)
+      const { data: ticketId, error: dbError } = await supabase.rpc("create_citizen_ticket", {
+        p_location_lat: location.lat,
+        p_location_lng: location.lng,
+        p_category: aiResult.issue,
+        p_severity: aiResult.severity,
+        p_before_image_url: publicUrl,
+        p_ai_confidence: 0.94,
+        p_ai_label: aiResult.issue,
+      });
 
       if (dbError) throw dbError;
 
-      const realId = ticketData.id.substring(0, 8).toUpperCase();
+      const realId = (ticketId as string).substring(0, 8).toUpperCase();
       setTicketNumber(parseInt(realId, 16) || ticketNumber);
 
       hideToast();

@@ -690,13 +690,41 @@ function CameraViewState({
     }
   };
 
-  const handleCaptureClick = () => {
+  const [capturing, setCapturing] = useState(false);
+
+  const handleCaptureClick = async () => {
     const video = videoRef.current;
     if (!video || !cameraReady) {
       showToast("Camera not ready yet.", "error");
       return;
     }
 
+    setCapturing(true);
+    // Brief white flash overlay — fires regardless of torch support
+    setTimeout(() => setCapturing(false), 150);
+
+    const track = streamRef.current?.getVideoTracks()[0];
+
+    // Try ImageCapture API first — it natively fires the hardware flash
+    if (track && typeof (window as any).ImageCapture !== "undefined") {
+      try {
+        const imageCapture = new (window as any).ImageCapture(track);
+        const blob: Blob = await imageCapture.takePhoto(
+          flashOn ? { fillLightMode: "flash" } : { fillLightMode: "off" }
+        );
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+        onCapture(dataUrl, blob);
+        return;
+      } catch {
+        // ImageCapture failed — fall through to canvas path
+      }
+    }
+
+    // Canvas fallback (torch stays on via applyConstraints if supported)
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -734,6 +762,20 @@ function CameraViewState({
           className="absolute inset-0 w-full h-full object-cover"
           style={{ display: cameraError ? "none" : "block" }}
         />
+
+        {/* White flash overlay — briefly shown on shutter press */}
+        <AnimatePresence>
+          {capturing && (
+            <motion.div
+              key="flash"
+              initial={{ opacity: 0.85 }}
+              animate={{ opacity: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="absolute inset-0 bg-white pointer-events-none z-20"
+            />
+          )}
+        </AnimatePresence>
 
         {/* Loading state before stream is ready */}
         {!cameraError && !cameraReady && (

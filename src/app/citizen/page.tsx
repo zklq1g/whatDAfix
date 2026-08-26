@@ -303,16 +303,16 @@ export default function CitizenPortal() {
     showToast("Securing evidence and reporting to municipality...", "loading");
 
     try {
-      // Ensure we have an authenticated session (anonymous is fine)
+      // Ensure we have an authenticated session
       let { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        const { error: anonError } = await supabase.auth.signInAnonymously();
-        if (anonError) {
-          throw new Error(
-            anonError.message.includes("not enabled")
-              ? "Anonymous sign-in is not enabled in the project. Please enable it in Supabase Dashboard → Authentication → Providers."
-              : anonError.message
-          );
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: 'demo@whatdafix.local',
+          password: 'demopassword123',
+        });
+        
+        if (signInError) {
+          throw new Error(`Demo sign-in failed: ${signInError.message}`);
         }
         ({ data: { user } } = await supabase.auth.getUser());
         if (!user) throw new Error("Sign-in succeeded but user is still null.");

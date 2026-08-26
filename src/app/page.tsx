@@ -90,62 +90,10 @@ export default function LandingPage() {
             CIVIC ACCOUNTABILITY ENGINE v1.0
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <Activity className="h-3 w-3 text-[#35D07F] animate-pulse" />
-          <span className="text-[#35D07F] text-xs font-mono-tech">SYSTEM LIVE</span>
-        </div>
       </nav>
 
-      {/* ── Hero ────────────────────────────────────────── */}
-      <section className="flex flex-col items-center text-center px-6 pt-16 pb-12">
-        <motion.div
-          initial={{ opacity: 0, y: -16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="inline-flex items-center gap-2 border border-[#1C303B] bg-[#08121A] rounded-full px-4 py-1.5 text-xs text-[#7E939E] mb-6">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#00D4FF] animate-pulse inline-block" />
-            End-to-End Municipal Accountability Platform
-          </div>
-
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight leading-tight mb-4">
-            Stop reporting into a{" "}
-            <span className="text-[#FF4D5A]">black hole.</span>
-            <br />
-            <span className="text-[#00D4FF]">Force accountability.</span>
-          </h1>
-
-          <p className="max-w-xl mx-auto text-[#7E939E] text-base md:text-lg leading-relaxed">
-            Cryptographic proof-of-work. Anti-spoofing GPS geofencing.
-            AI-powered issue routing. Real-time SLA enforcement.
-            <br />
-            One platform. Four tiers.
-          </p>
-        </motion.div>
-
-        {/* Live stats bar */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4, duration: 0.5 }}
-          className="mt-10 flex flex-wrap justify-center gap-6 sm:gap-10"
-        >
-          {[
-            { label: "Active Tickets", value: "142" },
-            { label: "Resolved This Month", value: "891" },
-            { label: "SLA Compliance", value: "94.2%" },
-            { label: "Avg Response Time", value: "3.4 hrs" },
-          ].map((s) => (
-            <div key={s.label} className="text-center">
-              <div className="text-2xl font-bold text-[#00D4FF] font-mono-tech">{s.value}</div>
-              <div className="text-xs text-[#566B76] mt-0.5">{s.label}</div>
-            </div>
-          ))}
-        </motion.div>
-      </section>
-
       {/* ── Portal Cards ────────────────────────────────── */}
-      <section className="flex-1 px-4 sm:px-6 pb-16 max-w-6xl mx-auto w-full">
+      <section className="flex-1 px-4 sm:px-6 pt-16 pb-16 max-w-6xl mx-auto w-full">
         <motion.div
           className="grid grid-cols-1 sm:grid-cols-2 gap-4"
           variants={containerVariants}

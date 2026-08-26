@@ -1,251 +1,1045 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useRef } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Camera, MapPin, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Camera,
+  Zap,
+  ZapOff,
+  MapPin,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  RotateCcw,
+  Send,
+  ArrowUp,
+  User,
+  ScanLine,
+  Radio,
+} from "lucide-react";
 
-// Import the Tracker component we made earlier
-import { Tracker } from "@/components/Tracker" 
+import { Logo } from "@/components/Logo";
+import { supabase } from "@/lib/supabase";
 
-import { supabase } from "@/lib/supabase"
-import { Logo } from "@/components/Logo"
+// ----------------------------------------------------------------------------------
+// COLOR SYSTEM (Master Palette)
+// ----------------------------------------------------------------------------------
+
+const COLORS = {
+  bgMain: "#050A0F",
+  bgSecondary: "#08121A",
+  panel: "#0D1922",
+  panelElevated: "#111F29",
+  panelHover: "#152733",
+  border: "#1C303B",
+
+  textHeading: "#E8F3F7",
+  textBody: "#B5C6CE",
+  textSecondary: "#7E939E",
+  textMeta: "#566B76",
+};
+
+// ----------------------------------------------------------------------------------
+// TYPES
+// ----------------------------------------------------------------------------------
+
+type FlowState = "camera" | "preview" | "locating" | "scanning" | "result";
+type ToastType = "success" | "error" | "info" | "loading";
+
+interface AIResult {
+  issue: string;
+  severity: number;
+}
+
+interface Coordinates {
+  lat: number;
+  lng: number;
+}
+
+interface ToastState {
+  message: string;
+  type: ToastType;
+}
+
+// ----------------------------------------------------------------------------------
+// FAKE DATA
+// ----------------------------------------------------------------------------------
+
+const ISSUE_POOL = [
+  { issue: "Pothole", range: [70, 95] as [number, number] },
+  { issue: "Garbage Dump", range: [60, 90] as [number, number] },
+  { issue: "Broken Streetlight", range: [50, 85] as [number, number] },
+];
+
+const HIDDEN_TIMEOUT_MS = 30000;
+const FALLBACK_COORDS: Coordinates = { lat: 12.9716, lng: 77.5946 };
+
+// ----------------------------------------------------------------------------------
+// MAIN COMPONENT
+// ----------------------------------------------------------------------------------
 
 export default function CitizenPortal() {
-  const [image, setImage] = useState<string | null>(null)
-  const [file, setFile] = useState<File | null>(null)
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
-  const [isLocating, setIsLocating] = useState(false)
-  const [submissionStep, setSubmissionStep] = useState(0) // 0: idle, 1-4: processing, 5: done
-  const [ticketId, setTicketId] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [flowState, setFlowState] = useState<FlowState>("camera");
+  const [flashOn, setFlashOn] = useState(false);
+  const [demoForceNew, setDemoForceNew] = useState(false);
 
-  // Auto-login citizen anonymously on mount for frictionless demo
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null); // Real file for upload
+  const [location, setLocation] = useState<Coordinates | null>(null);
+  const [scanLogs, setScanLogs] = useState<string[]>([]);
+  const [aiResult, setAiResult] = useState<AIResult | null>(null);
+  const [resultType, setResultType] = useState<"cluster" | "new" | null>(null);
+  const [ticketNumber, setTicketNumber] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const hiddenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scanTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  // Auto-login citizen anonymously on mount
   useEffect(() => {
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        await supabase.auth.signInAnonymously()
+        await supabase.auth.signInAnonymously();
       }
-    }
-    initAuth()
-  }, [])
+    };
+    initAuth();
+  }, []);
 
-  // 1. The GPS Lock Mechanism
-  const acquireGPS = () => {
-    setIsLocating(true)
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          })
-          setIsLocating(false)
-        },
-        (error) => {
-          console.error("GPS Error:", error)
-          setIsLocating(false)
-          // Hackathon fallback: If GPS fails in browser, fake it for the demo
-          setLocation({ lat: 12.9716, lng: 77.5946 }) 
-        }
-      )
-    }
-  }
+  // --------------------------------------------------------------------------------
+  // TOAST HELPERS
+  // --------------------------------------------------------------------------------
 
-  // 2. The Supabase & AI Submission Flow
-  const handleSubmit = async () => {
-    if (!image || !location || !file) return
+  const showToast = useCallback((message: string, type: ToastType = "info") => {
+    setToast({ message, type });
+    if (type !== "loading") {
+      window.setTimeout(() => setToast(null), 3500);
+    }
+  }, []);
+
+  const hideToast = useCallback(() => {
+    setToast(null);
+  }, []);
+
+  // --------------------------------------------------------------------------------
+  // TIMER LOGIC (Anti-spoofing 30s window)
+  // --------------------------------------------------------------------------------
+
+  const clearHiddenTimer = () => {
+    if (hiddenTimeoutRef.current) {
+      clearTimeout(hiddenTimeoutRef.current);
+      hiddenTimeoutRef.current = null;
+    }
+  };
+
+  const startHiddenTimer = () => {
+    clearHiddenTimer();
+    hiddenTimeoutRef.current = setTimeout(() => {
+      showToast(
+        "Timeout: Location must be verified immediately after photo capture to prevent spoofing. Please retake.",
+        "error"
+      );
+      resetToCamera();
+    }, HIDDEN_TIMEOUT_MS);
+  };
+
+  const clearScanTimers = () => {
+    scanTimeoutsRef.current.forEach((t) => clearTimeout(t));
+    scanTimeoutsRef.current = [];
+  };
+
+  useEffect(() => {
+    return () => {
+      clearHiddenTimer();
+      clearScanTimers();
+    };
+  }, []);
+
+  // --------------------------------------------------------------------------------
+  // STATE 1 -> STATE 2 : CAPTURE
+  // --------------------------------------------------------------------------------
+
+  const handleCaptureClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    setFile(selectedFile);
+    const objectUrl = URL.createObjectURL(selectedFile);
+    setCapturedImage(objectUrl);
+    setFlowState("preview");
+    startHiddenTimer();
+
+    e.target.value = "";
+  };
+
+  const handleRetake = () => {
+    resetToCamera();
+  };
+
+  // --------------------------------------------------------------------------------
+  // STATE 2 -> STATE 3 : CONFIRM & LOCK LOCATION
+  // --------------------------------------------------------------------------------
+
+  const handleConfirmLocation = () => {
+    clearHiddenTimer();
+    setConfirming(true);
+    setFlowState("locating");
+    fetchLocation();
+  };
+
+  const fetchLocation = () => {
+    if (!navigator.geolocation) {
+      console.log("Geolocation unsupported, using fallback coords for demo.");
+      finalizeLocation(FALLBACK_COORDS);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        finalizeLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+      },
+      (err) => {
+        console.log("Geolocation failed, faking coordinates for demo:", err);
+        finalizeLocation(FALLBACK_COORDS);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
+  const finalizeLocation = (coords: Coordinates) => {
+    setLocation(coords);
+    setConfirming(false);
+    setFlowState("scanning");
+  };
+
+  // --------------------------------------------------------------------------------
+  // STATE 4 : FAKE AI SCAN
+  // --------------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (flowState === "scanning") {
+      runFakeAIScan();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowState]);
+
+  const runFakeAIScan = () => {
+    clearScanTimers();
+    setScanLogs([]);
+    setAiResult(null);
+
+    const preLogs = [
+      "Reading EXIF metadata...",
+      "Verifying capture timestamp...",
+      "Running Edge AI classification...",
+    ];
+
+    const chosen = ISSUE_POOL[Math.floor(Math.random() * ISSUE_POOL.length)];
+    const severity = Math.floor(
+      chosen.range[0] + Math.random() * (chosen.range[1] - chosen.range[0])
+    );
+
+    preLogs.forEach((log, idx) => {
+      const t = setTimeout(() => {
+        setScanLogs((prev) => [...prev, log]);
+      }, (idx + 1) * 650);
+      scanTimeoutsRef.current.push(t);
+    });
+
+    const finalLogTimer = setTimeout(() => {
+      setScanLogs((prev) => [
+        ...prev,
+        `Issue Detected: ${chosen.issue} (Severity: ${severity}/100)`,
+      ]);
+      setAiResult({ issue: chosen.issue, severity });
+    }, preLogs.length * 650 + 500);
+    scanTimeoutsRef.current.push(finalLogTimer);
+
+    const decisionTimer = setTimeout(() => {
+      decideResult();
+    }, 3000);
+    scanTimeoutsRef.current.push(decisionTimer);
+  };
+
+  // --------------------------------------------------------------------------------
+  // STATE 5 : RESULT (CLUSTER VS NEW)
+  // --------------------------------------------------------------------------------
+
+  const decideResult = () => {
+    const isNew = demoForceNew ? true : Math.random() < 0.25;
+
+    setResultType(isNew ? "new" : "cluster");
+    if (isNew) {
+      setTicketNumber(Math.floor(1000 + Math.random() * 9000).toString());
+    }
+    setFlowState("result");
+  };
+
+  const handleUpvote = () => {
+    // In a real app, we'd log the upvote to Supabase
+    showToast("Upvoted! SLA urgency increased.", "success");
+    setTimeout(() => resetToCamera(), 1400);
+  };
+
+  const handleSubmitTicket = async () => {
+    if (!aiResult || !location || !file) return;
     
-    // Simulate initial steps
-    setSubmissionStep(1) // Photo Captured
-    await new Promise(r => setTimeout(r, 800))
-    
-    setSubmissionStep(2) // GPS Locked
-    await new Promise(r => setTimeout(r, 800))
-    
-    setSubmissionStep(3) // Edge AI Scanning
-    await new Promise(r => setTimeout(r, 1000))
-    
+    setConfirming(true);
+    showToast("Securing evidence and reporting to municipality...", "loading");
+
     try {
-      // Get current authenticated user
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error("Not authenticated")
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
 
-      // Upload photo to Supabase Storage
-      const fileExt = file.name.split('.').pop() || 'jpg'
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-      const filePath = `${user.id}/${fileName}`
+      // Upload evidence
+      const fileExt = file.name.split('.').pop() || 'jpg';
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('civic-evidence')
-        .upload(filePath, file)
+        .upload(filePath, file);
 
-      if (uploadError) throw uploadError
+      if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
         .from('civic-evidence')
-        .getPublicUrl(filePath)
+        .getPublicUrl(filePath);
 
-      // Insert ticket into DB (PostGIS format for location geography)
-      const severity = Math.floor(Math.random() * 41) + 60 // 60-100 severity score
-      const category = "Pothole"
-
+      // Create ticket
       const { data: ticketData, error: dbError } = await supabase
         .from('tickets')
         .insert({
           created_by: user.id,
           location: `POINT(${location.lng} ${location.lat})`,
-          category,
-          severity,
+          category: aiResult.issue,
+          severity: aiResult.severity,
           before_image_url: publicUrl,
           ai_confidence: 0.94,
-          ai_label: category,
+          ai_label: aiResult.issue,
           status: 'open'
         })
         .select('id')
-        .single()
+        .single();
 
-      if (dbError) throw dbError
+      if (dbError) throw dbError;
 
-      setTicketId(ticketData.id.substring(0, 8).toUpperCase())
-
-      setSubmissionStep(4) // Routed to PWD
-      await new Promise(r => setTimeout(r, 1000))
+      const realId = ticketData.id.substring(0, 8).toUpperCase();
+      setTicketNumber(realId);
       
-      setSubmissionStep(5) // Success!
+      hideToast();
+      showToast(`Ticket #${realId} created and routed to PWD.`, "success");
+      setTimeout(() => resetToCamera(), 2000);
+
     } catch (err) {
-      console.error("Submission failed:", err)
-      setSubmissionStep(0)
-      alert("Submission failed. Please check connection and try again.")
+      console.error(err);
+      hideToast();
+      showToast("Submission failed. Please check connection and try again.", "error");
+    } finally {
+      setConfirming(false);
     }
-  }
+  };
 
-  const canSubmit = image && location && submissionStep === 0
+  // --------------------------------------------------------------------------------
+  // RESET
+  // --------------------------------------------------------------------------------
 
+  const resetToCamera = () => {
+    clearHiddenTimer();
+    clearScanTimers();
+    setCapturedImage(null);
+    setFile(null);
+    setLocation(null);
+    setScanLogs([]);
+    setAiResult(null);
+    setResultType(null);
+    setTicketNumber(null);
+    setConfirming(false);
+    setFlowState("camera");
+  };
+
+  // --------------------------------------------------------------------------------
+  // RENDER
+  // --------------------------------------------------------------------------------
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-50 p-4 flex flex-col items-center">
-      <header className="w-full max-w-md mb-6 text-center">
-        <Logo className="mx-auto" />
-        <p className="text-zinc-400 text-sm">Report Civic Issues. Zero Spam.</p>
-      </header>
+    <div
+      className="min-h-screen w-full flex items-center justify-center"
+      style={{ backgroundColor: COLORS.bgMain }}
+    >
+      <div
+        className="relative w-full max-w-[480px] h-screen flex flex-col overflow-hidden"
+        style={{
+          backgroundColor: COLORS.bgMain,
+          borderLeft: `1px solid ${COLORS.border}`,
+          borderRight: `1px solid ${COLORS.border}`,
+          color: COLORS.textBody,
+        }}
+      >
+        <TopBar demoForceNew={demoForceNew} setDemoForceNew={setDemoForceNew} />
 
-      <Card className="w-full max-w-md bg-zinc-900 border-zinc-800">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            Report an Issue
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          
-          {/* Live Camera Enforcement */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">1. Take Live Photo</label>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              ref={fileInputRef}
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) {
-                  setFile(file)
-                  setImage(URL.createObjectURL(file))
-                }
-              }}
-            />
-            
-            {image ? (
-              <div className="relative rounded-lg overflow-hidden border border-zinc-700">
-                <img src={image} alt="Civic issue" className="w-full h-48 object-cover" />
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  className="absolute top-2 right-2"
-                  onClick={() => { 
-                    setImage(null)
-                    setFile(null)
-                    if(fileInputRef.current) fileInputRef.current.value = "" 
-                  }}
-                >
-                  Retake
-                </Button>
-              </div>
-            ) : (
-              <Button 
-                variant="outline" 
-                className="w-full h-32 border-dashed border-zinc-700 hover:bg-zinc-800 flex flex-col gap-2"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Camera className="h-8 w-8 text-zinc-500" />
-                <span className="text-zinc-400">Open Camera (Gallery Disabled)</span>
-              </Button>
-            )}
-          </div>
+        <AnimatePresence>
+          {toast && <ToastBanner toast={toast} />}
+        </AnimatePresence>
 
-          {/* Mandatory GPS Lock */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">2. Verify Location</label>
-            <Button 
-              variant={location ? "secondary" : "default"} 
-              className="w-full" 
-              onClick={acquireGPS} 
-              disabled={isLocating || !!location}
-            >
-              {isLocating ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Acquiring Secure GPS...</>
-              ) : location ? (
-                <><CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> GPS Locked ({location.lat.toFixed(4)}, {location.lng.toFixed(4)})</>
-              ) : (
-                <><MapPin className="mr-2 h-4 w-4" /> Lock Current Location</>
-              )}
-            </Button>
-          </div>
-
-          {/* Submit & Framer Motion Tracker */}
+        <div className="relative flex-1 overflow-hidden">
           <AnimatePresence mode="wait">
-            {submissionStep === 0 ? (
-              <motion.div
-                key="submit-btn"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, height: 0 }}
-              >
-                <Button 
-                  className="w-full bg-green-600 hover:bg-green-700 text-lg h-12" 
-                  disabled={!canSubmit}
-                  onClick={handleSubmit}
-                >
-                  {canSubmit ? "Submit Report" : "Complete Steps 1 & 2 to Submit"}
-                </Button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="tracker"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-zinc-950 p-4 rounded-lg border border-zinc-800"
-              >
-                <Tracker step={submissionStep} />
-                {submissionStep === 5 && (
-                  <motion.div 
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="mt-4 text-center text-green-500 font-bold"
-                  >
-                    Ticket #{ticketId || "8492"} Created & Routed to PWD!
-                  </motion.div>
-                )}
-              </motion.div>
+            {flowState === "camera" && (
+              <CameraViewState
+                key="camera"
+                flashOn={flashOn}
+                setFlashOn={setFlashOn}
+                onCapture={handleCaptureClick}
+              />
             )}
-          </AnimatePresence>
 
-        </CardContent>
-      </Card>
-    </main>
-  )
+            {flowState === "preview" && capturedImage && (
+              <PreviewState
+                key="preview"
+                image={capturedImage}
+                confirming={confirming}
+                onRetake={handleRetake}
+                onConfirm={handleConfirmLocation}
+              />
+            )}
+
+            {flowState === "locating" && capturedImage && (
+              <LocatingState key="locating" image={capturedImage} />
+            )}
+
+            {flowState === "scanning" && capturedImage && (
+              <ScanningState key="scanning" image={capturedImage} logs={scanLogs} />
+            )}
+
+            {flowState === "result" &&
+              capturedImage &&
+              resultType &&
+              aiResult &&
+              location && (
+                <ResultState
+                  key="result"
+                  image={capturedImage}
+                  resultType={resultType}
+                  aiResult={aiResult}
+                  location={location}
+                  ticketNumber={ticketNumber}
+                  onUpvote={handleUpvote}
+                  onSubmit={handleSubmitTicket}
+                  confirming={confirming}
+                />
+              )}
+          </AnimatePresence>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ====================================================================================
+// TOP BAR
+// ====================================================================================
+
+function TopBar({
+  demoForceNew,
+  setDemoForceNew,
+}: {
+  demoForceNew: boolean;
+  setDemoForceNew: (v: boolean) => void;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between px-4 py-3 z-30 relative"
+      style={{
+        backgroundColor: COLORS.bgSecondary,
+        borderBottom: `1px solid ${COLORS.border}`,
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <Logo className="w-24 h-6" />
+        <span className="text-[10px] uppercase font-mono-tech mt-1" style={{ color: COLORS.textMeta }}>
+          Citizen
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setDemoForceNew(!demoForceNew)}
+          className="flex items-center gap-1.5 group"
+          title="Demo: Force New Ticket"
+        >
+          <span
+            className="text-[9px] uppercase tracking-wide max-w-[70px] text-right leading-tight transition-colors"
+            style={{ color: COLORS.textMeta }}
+          >
+            Force New Ticket
+          </span>
+          <div
+            className="w-9 h-5 rounded-full flex items-center px-0.5 transition-colors duration-200"
+            style={{
+              backgroundColor: demoForceNew ? "#34D399" : COLORS.panelElevated,
+              border: `1px solid ${COLORS.border}`,
+            }}
+          >
+            <motion.div
+              layout
+              className="w-4 h-4 rounded-full shadow"
+              style={{ backgroundColor: COLORS.textHeading }}
+              animate={{ x: demoForceNew ? 16 : 0 }}
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            />
+          </div>
+        </button>
+
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center"
+          style={{
+            backgroundColor: COLORS.panelElevated,
+            border: `1px solid ${COLORS.border}`,
+          }}
+        >
+          <User size={16} style={{ color: COLORS.textSecondary }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ====================================================================================
+// TOAST
+// ====================================================================================
+
+function ToastBanner({ toast }: { toast: ToastState }) {
+  const styleMap: Record<
+    ToastType,
+    { bg: string; border: string; text: string }
+  > = {
+    success: {
+      bg: "rgba(52, 211, 153, 0.1)",
+      border: "rgba(52, 211, 153, 0.35)",
+      text: "#6EE7B7",
+    },
+    error: {
+      bg: "rgba(248, 113, 113, 0.1)",
+      border: "rgba(248, 113, 113, 0.35)",
+      text: "#FCA5A5",
+    },
+    info: {
+      bg: "rgba(96, 165, 250, 0.1)",
+      border: "rgba(96, 165, 250, 0.35)",
+      text: "#93C5FD",
+    },
+    loading: {
+      bg: "rgba(250, 204, 21, 0.1)",
+      border: "rgba(250, 204, 21, 0.35)",
+      text: "#FDE047",
+    },
+  };
+
+  const s = styleMap[toast.type];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="absolute top-16 left-4 right-4 z-50 rounded-xl px-4 py-3 text-sm font-medium shadow-lg flex items-center gap-2"
+      style={{
+        backgroundColor: s.bg,
+        border: `1px solid ${s.border}`,
+        color: s.text,
+      }}
+    >
+      {toast.type === "loading" && <Loader2 size={16} className="animate-spin shrink-0" />}
+      {toast.message}
+    </motion.div>
+  );
+}
+
+// ====================================================================================
+// STATE 1: CAMERA VIEW
+// ====================================================================================
+
+function CameraViewState({
+  flashOn,
+  setFlashOn,
+  onCapture,
+}: {
+  flashOn: boolean;
+  setFlashOn: (v: boolean) => void;
+  onCapture: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 flex flex-col"
+      style={{ backgroundColor: COLORS.bgMain }}
+    >
+      <div
+        className="relative flex-1 flex items-center justify-center overflow-hidden"
+        style={{
+          background: `linear-gradient(to bottom, ${COLORS.bgSecondary}, ${COLORS.bgMain})`,
+        }}
+      >
+        <div className="absolute inset-8 pointer-events-none">
+          <Corner className="top-0 left-0 border-t-2 border-l-2" />
+          <Corner className="top-0 right-0 border-t-2 border-r-2" />
+          <Corner className="bottom-0 left-0 border-b-2 border-l-2" />
+          <Corner className="bottom-0 right-0 border-b-2 border-r-2" />
+        </div>
+
+        <div
+          className="flex flex-col items-center gap-3"
+          style={{ color: COLORS.textMeta }}
+        >
+          <Camera size={40} strokeWidth={1.2} />
+          <p className="text-xs tracking-wide">Align the issue within frame</p>
+        </div>
+
+        <button
+          onClick={() => setFlashOn(!flashOn)}
+          className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-colors"
+          style={{
+            backgroundColor: flashOn
+              ? "rgba(250, 204, 21, 0.12)"
+              : "rgba(13, 25, 34, 0.7)",
+            border: flashOn
+              ? "1px solid rgba(250, 204, 21, 0.5)"
+              : `1px solid ${COLORS.border}`,
+            color: flashOn ? "#FDE047" : COLORS.textSecondary,
+          }}
+        >
+          {flashOn ? <Zap size={18} /> : <ZapOff size={18} />}
+        </button>
+      </div>
+
+      <div
+        className="pb-10 pt-6 flex items-center justify-center"
+        style={{ backgroundColor: COLORS.bgMain }}
+      >
+        <button
+          onClick={onCapture}
+          className="w-20 h-20 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+          style={{
+            border: `4px solid ${COLORS.panelElevated}`,
+            backgroundColor: COLORS.textHeading,
+            boxShadow: `0 0 0 4px rgba(232, 243, 247, 0.06)`,
+          }}
+        >
+          <div
+            className="w-16 h-16 rounded-full"
+            style={{
+              backgroundColor: COLORS.textHeading,
+              border: `1px solid ${COLORS.border}`,
+            }}
+          />
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+function Corner({ className }: { className: string }) {
+  return (
+    <div
+      className={`absolute w-8 h-8 ${className}`}
+      style={{ borderColor: "rgba(52, 211, 153, 0.6)" }}
+    />
+  );
+}
+
+// ====================================================================================
+// STATE 2: PREVIEW + LOCATION LOCK
+// ====================================================================================
+
+function PreviewState({
+  image,
+  confirming,
+  onRetake,
+  onConfirm,
+}: {
+  image: string;
+  confirming: boolean;
+  onRetake: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="absolute inset-0 flex flex-col"
+      style={{ backgroundColor: COLORS.bgMain }}
+    >
+      <div className="relative flex-1">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt="Captured issue" className="w-full h-full object-cover" />
+        <div
+          className="absolute top-4 left-4 backdrop-blur px-3 py-1.5 rounded-full text-[11px]"
+          style={{
+            backgroundColor: "rgba(8, 18, 26, 0.75)",
+            border: `1px solid ${COLORS.border}`,
+            color: COLORS.textBody,
+          }}
+        >
+          Photo captured — confirm quickly
+        </div>
+      </div>
+
+      <div
+        className="p-4 flex gap-3"
+        style={{
+          backgroundColor: COLORS.bgSecondary,
+          borderTop: `1px solid ${COLORS.border}`,
+        }}
+      >
+        <button
+          onClick={onRetake}
+          disabled={confirming}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-medium text-sm active:scale-[0.98] transition-transform disabled:opacity-50"
+          style={{
+            border: `1px solid ${COLORS.border}`,
+            color: COLORS.textBody,
+            backgroundColor: COLORS.panel,
+          }}
+        >
+          <RotateCcw size={16} />
+          Retake
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={confirming}
+          className="flex-[1.4] flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform disabled:opacity-70"
+          style={{ backgroundColor: "#34D399", color: "#04140D" }}
+        >
+          <MapPin size={16} />
+          {confirming ? "Locking..." : "Confirm & Lock Location"}
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ====================================================================================
+// STATE 3: LOCATING
+// ====================================================================================
+
+function LocatingState({ image }: { image: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0"
+      style={{ backgroundColor: COLORS.bgMain }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={image} alt="Captured issue" className="w-full h-full object-cover opacity-30" />
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-4"
+        style={{ backgroundColor: "rgba(5, 10, 15, 0.55)" }}
+      >
+        <div className="relative">
+          <Loader2 size={44} className="animate-spin" style={{ color: "#60A5FA" }} />
+          <MapPin size={20} className="absolute inset-0 m-auto" style={{ color: "#93C5FD" }} />
+        </div>
+        <p
+          className="text-sm font-medium tracking-wide"
+          style={{ color: COLORS.textHeading }}
+        >
+          Acquiring Secure GPS Coordinates...
+        </p>
+        <p className="text-[11px]" style={{ color: COLORS.textMeta }}>
+          Do not close the app
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ====================================================================================
+// STATE 4: AI SCANNING
+// ====================================================================================
+
+function ScanningState({ image, logs }: { image: string; logs: string[] }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 flex flex-col"
+      style={{ backgroundColor: COLORS.bgMain }}
+    >
+      <div className="relative flex-1 overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt="Captured issue" className="w-full h-full object-cover" />
+
+        <div
+          className="absolute inset-0 pointer-events-none animate-pulse"
+          style={{ border: "2px solid rgba(96, 165, 250, 0.5)" }}
+        />
+
+        <motion.div
+          className="absolute left-0 right-0 h-0.5"
+          style={{
+            backgroundColor: "#34D399",
+            boxShadow: "0 0 12px 2px rgba(52, 211, 153, 0.7)",
+          }}
+          animate={{ top: ["5%", "95%", "5%"] }}
+          transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}
+        />
+
+        <div
+          className="absolute top-4 left-4 flex items-center gap-2 backdrop-blur px-3 py-1.5 rounded-full"
+          style={{
+            backgroundColor: "rgba(8, 18, 26, 0.75)",
+            border: "1px solid rgba(96, 165, 250, 0.35)",
+          }}
+        >
+          <ScanLine size={14} style={{ color: "#93C5FD" }} />
+          <span className="text-[11px] font-medium" style={{ color: "#BFDBFE" }}>
+            Analyzing with Edge AI
+          </span>
+        </div>
+      </div>
+
+      <div
+        className="p-4 h-40 overflow-y-auto font-mono text-[11px] space-y-1.5"
+        style={{
+          backgroundColor: COLORS.bgSecondary,
+          borderTop: `1px solid ${COLORS.border}`,
+        }}
+      >
+        {logs.length === 0 && (
+          <span style={{ color: COLORS.textMeta }}>Initializing pipeline...</span>
+        )}
+        {logs.map((log, idx) => (
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, x: -6 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-start gap-2"
+          >
+            <span style={{ color: COLORS.textMeta }}>{">"}</span>
+            <span
+              style={{
+                color: log.startsWith("Issue Detected") ? "#FDE047" : "#6EE7B7",
+                fontWeight: log.startsWith("Issue Detected") ? 600 : 400,
+              }}
+            >
+              {log}
+            </span>
+          </motion.div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+// ====================================================================================
+// STATE 5: RESULT
+// ====================================================================================
+
+function ResultState({
+  image,
+  resultType,
+  aiResult,
+  location,
+  ticketNumber,
+  onUpvote,
+  onSubmit,
+  confirming,
+}: {
+  image: string;
+  resultType: "cluster" | "new";
+  aiResult: AIResult;
+  location: Coordinates;
+  ticketNumber: string | null;
+  onUpvote: () => void;
+  onSubmit: () => void;
+  confirming: boolean;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 flex flex-col"
+      style={{ backgroundColor: COLORS.bgMain }}
+    >
+      <div className="relative h-52 shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt="Captured issue" className="w-full h-full object-cover" />
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(to top, ${COLORS.bgMain}, transparent)`,
+          }}
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 -mt-6 relative z-10 pb-4">
+        {resultType === "cluster" ? (
+          <ClusterCard aiResult={aiResult} />
+        ) : (
+          <NewTicketCard aiResult={aiResult} location={location} ticketNumber={ticketNumber} />
+        )}
+      </div>
+
+      <div
+        className="p-4"
+        style={{
+          borderTop: `1px solid ${COLORS.border}`,
+          backgroundColor: COLORS.bgMain,
+        }}
+      >
+        {resultType === "cluster" ? (
+          <button
+            onClick={onUpvote}
+            disabled={confirming}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform disabled:opacity-50"
+            style={{ backgroundColor: "#FB923C", color: "#1A0E02" }}
+          >
+            <ArrowUp size={16} />
+            Upvote Existing Report
+          </button>
+        ) : (
+          <button
+            onClick={onSubmit}
+            disabled={confirming}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform disabled:opacity-50"
+            style={{ backgroundColor: "#34D399", color: "#04140D" }}
+          >
+            {confirming ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            {confirming ? "Uploading Evidence..." : "Submit to Municipality"}
+          </button>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function ClusterCard({ aiResult }: { aiResult: AIResult }) {
+  return (
+    <div
+      className="rounded-2xl p-4 space-y-3"
+      style={{
+        border: "1px solid rgba(251, 146, 60, 0.3)",
+        backgroundColor: "rgba(251, 146, 60, 0.08)",
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <AlertTriangle size={18} style={{ color: "#FB923C" }} />
+        <span className="font-semibold text-sm" style={{ color: "#FDBA74" }}>
+          Cluster Detected
+        </span>
+      </div>
+      <p className="text-sm leading-relaxed" style={{ color: COLORS.textBody }}>
+        <span className="font-semibold" style={{ color: "#FED7AA" }}>
+          3 other citizens
+        </span>{" "}
+        have reported this exact issue within a{" "}
+        <span className="font-semibold" style={{ color: "#FED7AA" }}>
+          20-meter radius
+        </span>{" "}
+        in the last 24 hours.
+      </p>
+
+      <div
+        className="flex items-center gap-2 pt-2"
+        style={{ borderTop: "1px solid rgba(251, 146, 60, 0.2)" }}
+      >
+        <Radio size={14} style={{ color: "#FB923C" }} />
+        <span className="text-xs" style={{ color: COLORS.textSecondary }}>
+          Detected: {aiResult.issue} • Severity {aiResult.severity}/100
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function NewTicketCard({
+  aiResult,
+  location,
+  ticketNumber,
+}: {
+  aiResult: AIResult;
+  location: Coordinates;
+  ticketNumber: string | null;
+}) {
+  const severityLabel =
+    aiResult.severity >= 80 ? "High" : aiResult.severity >= 60 ? "Moderate" : "Low";
+
+  return (
+    <div
+      className="rounded-2xl p-4 space-y-3"
+      style={{
+        border: "1px solid rgba(52, 211, 153, 0.3)",
+        backgroundColor: "rgba(52, 211, 153, 0.08)",
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <CheckCircle2 size={18} style={{ color: "#34D399" }} />
+        <span className="font-semibold text-sm" style={{ color: "#6EE7B7" }}>
+          New Issue Classified
+        </span>
+      </div>
+
+      <div
+        className="flex items-center justify-between rounded-xl px-3 py-2.5"
+        style={{ backgroundColor: COLORS.panelElevated }}
+      >
+        <span className="text-sm font-medium" style={{ color: COLORS.textHeading }}>
+          {aiResult.issue}
+        </span>
+        <span
+          className="text-xs px-2 py-1 rounded-full font-semibold"
+          style={{
+            backgroundColor: "rgba(52, 211, 153, 0.15)",
+            color: "#6EE7B7",
+          }}
+        >
+          {severityLabel} · {aiResult.severity}/100
+        </span>
+      </div>
+
+      <div
+        className="flex items-center gap-2 text-xs pt-1"
+        style={{
+          borderTop: "1px solid rgba(52, 211, 153, 0.2)",
+          color: COLORS.textSecondary,
+        }}
+      >
+        <MapPin size={13} style={{ color: "#34D399" }} />
+        <span>
+          {location.lat.toFixed(4)}, {location.lng.toFixed(4)} (locked)
+        </span>
+      </div>
+
+      {ticketNumber && (
+        <div className="text-[11px]" style={{ color: COLORS.textMeta }}>
+          Draft Ticket ID: #{ticketNumber}
+        </div>
+      )}
+    </div>
+  );
 }

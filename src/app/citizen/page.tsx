@@ -306,9 +306,16 @@ export default function CitizenPortal() {
       // Ensure we have an authenticated session (anonymous is fine)
       let { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        await supabase.auth.signInAnonymously();
+        const { error: anonError } = await supabase.auth.signInAnonymously();
+        if (anonError) {
+          throw new Error(
+            anonError.message.includes("not enabled")
+              ? "Anonymous sign-in is not enabled in the project. Please enable it in Supabase Dashboard → Authentication → Providers."
+              : anonError.message
+          );
+        }
         ({ data: { user } } = await supabase.auth.getUser());
-        if (!user) throw new Error("Not authenticated");
+        if (!user) throw new Error("Sign-in succeeded but user is still null.");
       }
 
       // Upload evidence image
@@ -613,80 +620,73 @@ function CameraViewState({
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Start camera stream on mount, stop it on unmount
-  useEffect(() => {
-    let cancelled = false;
+  const stopStream = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  };
 
-    async function startCamera() {
-      setCameraError(null);
-      setCameraReady(false);
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError(
-          "Camera API unsupported in this browser (requires HTTPS)."
-        );
-        return;
-      }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        });
-
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-        setCameraReady(true);
-      } catch (err) {
-        console.log("Camera access failed:", err);
-        setCameraError(
-          "Camera access denied or unavailable. Use upload fallback below."
-        );
-      }
+  const startCamera = async (withTorch: boolean, cancelled: { val: boolean }) => {
+    setCameraReady(false);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Camera API unsupported in this browser (requires HTTPS).");
+      return;
     }
+    try {
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          ...(withTorch ? { advanced: [{ torch: true }] } as any : {}),
+        },
+        audio: false,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (cancelled.val) { stream.getTracks().forEach((t) => t.stop()); return; }
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      // Also try applyConstraints for torch (belt-and-suspenders)
+      if (withTorch) {
+        const track = stream.getVideoTracks()[0];
+        try { await track?.applyConstraints({ advanced: [{ torch: true } as any] }); } catch { /* ok */ }
+      }
+      setCameraReady(true);
+    } catch (err) {
+      console.log("Camera access failed:", err);
+      setCameraError("Camera access denied or unavailable. Use upload fallback below.");
+    }
+  };
 
-    startCamera();
-
+  // Start camera on mount
+  useEffect(() => {
+    const cancelled = { val: false };
+    setCameraError(null);
+    startCamera(flashOn, cancelled);
     return () => {
-      cancelled = true;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
+      cancelled.val = true;
+      stopStream();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Apply torch constraint whenever flashOn or cameraReady changes
+  // Restart stream when flashOn changes to apply torch at getUserMedia level
+  const prevFlashRef = useRef(flashOn);
   useEffect(() => {
-    const applyTorch = async () => {
-      const track = streamRef.current?.getVideoTracks()[0];
-      if (!track || !cameraReady) return;
-      try {
-        await track.applyConstraints({
-          advanced: [{ torch: flashOn } as any],
-        });
-      } catch {
-        // torch not supported on this device
-      }
-    };
-    applyTorch();
-  }, [flashOn, cameraReady]);
+    if (prevFlashRef.current === flashOn) return;
+    prevFlashRef.current = flashOn;
+    if (!cameraReady && !cameraError) return; // still starting, skip
+    const cancelled = { val: false };
+    setCameraError(null);
+    stopStream();
+    startCamera(flashOn, cancelled);
+    return () => { cancelled.val = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flashOn]);
 
-  // Best-effort torch toggle button handler
-  const toggleFlash = () => {
-    setFlashOn(!flashOn);
-    // applyConstraints is handled by the useEffect above
-  };
+  const toggleFlash = () => setFlashOn(!flashOn);
 
   const [capturing, setCapturing] = useState(false);
 
@@ -698,29 +698,18 @@ function CameraViewState({
     }
 
     setCapturing(true);
-    // Brief white flash overlay — fires regardless of torch support
     setTimeout(() => setCapturing(false), 180);
 
     const track = streamRef.current?.getVideoTracks()[0];
 
-    // Ensure torch is on right before capture (belt-and-suspenders)
-    if (flashOn && track) {
-      try {
-        await track.applyConstraints({ advanced: [{ torch: true } as any] });
-      } catch { /* ignore */ }
-    }
-
-    // Try ImageCapture API — fires hardware flash if available
+    // Try ImageCapture API — uses hardware shutter + flash signal
     if (track && typeof (window as any).ImageCapture !== "undefined") {
       try {
         const imageCapture = new (window as any).ImageCapture(track);
-        const photoCapabilities = await imageCapture.getPhotoCapabilities().catch(() => null);
-        const canFlash = photoCapabilities?.fillLightMode?.includes("flash");
-
+        const capabilities = await imageCapture.getPhotoCapabilities().catch(() => null);
+        const canFlash = capabilities?.fillLightMode?.includes("flash");
         const blob: Blob = await imageCapture.takePhoto(
-          flashOn && canFlash
-            ? { fillLightMode: "flash" }
-            : { fillLightMode: "off" }
+          flashOn && canFlash ? { fillLightMode: "flash" } : {}
         );
         const dataUrl = await new Promise<string>((resolve) => {
           const reader = new FileReader();
@@ -730,23 +719,20 @@ function CameraViewState({
         onCapture(dataUrl, blob);
         return;
       } catch {
-        // ImageCapture failed or not supported — fall through to canvas
+        // Fall through to canvas
       }
     }
 
-    // Canvas fallback (torch stays on via applyConstraints)
+    // Canvas fallback — torch is already on via stream constraints
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
     canvas.toBlob(
-      (blob) => {
-        if (blob) onCapture(dataUrl, blob);
-      },
+      (blob) => { if (blob) onCapture(dataUrl, blob); },
       "image/jpeg",
       0.9
     );

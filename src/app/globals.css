@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -154,4 +155,19 @@
   .font-mono-tech {
     font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
   }
+}
+
+/* ── Custom scrollbar for admin panels ── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #050A0F;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #1C303B;
+  border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #00D4FF33;
 }

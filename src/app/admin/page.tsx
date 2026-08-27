@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import {
@@ -10,6 +11,15 @@ import {
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { supabase } from '@/lib/supabase';
+
+const AdminMap = dynamic(() => import('@/components/AdminMap').then(mod => mod.AdminMap), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 flex items-center justify-center bg-[#050A0F]">
+      <span className="text-[#00D4FF] font-mono text-xs animate-pulse">BOOTING GEO-GRID...</span>
+    </div>
+  )
+});
 
 // ---------------------------------------------------------------------------
 // Types
@@ -557,30 +567,16 @@ function LiveGeoMap({ tickets, slaBreachSimulated, onTicketSelect }: LiveGeoMapP
       </div>
       
       {/* Map Area */}
-      <div className="flex-1 relative bg-[#050A0F] overflow-hidden">
+      <div className="flex-1 relative bg-[#050A0F] overflow-hidden min-h-[300px]">
         {/* Radar Grid Background */}
-        <div className="absolute inset-0 opacity-[0.07]" 
+        <div className="absolute inset-0 opacity-[0.07] z-10 pointer-events-none" 
           style={{ backgroundImage: 'radial-gradient(circle, #00D4FF 1px, transparent 1px)', backgroundSize: '22px 22px' }}>
         </div>
-
-        {/* SVG Map of India (Glowing Low-Poly Tactical Style) */}
-        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full p-4" preserveAspectRatio="xMidYMid meet">
-          <defs>
-            {/* Glow Filter for the map outline */}
-            <filter id="neon-glow">
-              <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
-              <feMerge>
-                <feMergeNode in="coloredBlur"/>
-                <feMergeNode in="SourceGraphic"/>
-              </feMerge>
-            </filter>
-          </defs>
-          
-          {/* Radar Rings */}
+        
+        {/* Radar Rings & Sweep Animation overlaying the map */}
+        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full p-4 z-10 pointer-events-none" preserveAspectRatio="xMidYMid meet">
           <circle cx="50" cy="50" r="40" fill="none" stroke="#00D4FF" strokeWidth="0.2" strokeOpacity="0.3" strokeDasharray="2 2" />
           <circle cx="50" cy="50" r="25" fill="none" stroke="#00D4FF" strokeWidth="0.2" strokeOpacity="0.3" strokeDasharray="2 2" />
-          
-          {/* Animated Radar Sweep */}
           <line x1="50" y1="50" x2="50" y2="10" stroke="#00D4FF" strokeWidth="0.5" strokeOpacity="0.6">
             <animateTransform 
               attributeName="transform" 
@@ -591,97 +587,15 @@ function LiveGeoMap({ tickets, slaBreachSimulated, onTicketSelect }: LiveGeoMapP
               repeatCount="indefinite" 
             />
           </line>
-
-          {/* Low-Poly India Outline */}
-          <path 
-            d="M 45 10 L 50 8 L 55 10 L 60 15 L 65 18 L 70 25 L 75 30 L 80 35 L 85 40 L 82 45 L 85 50 L 80 55 L 75 60 L 70 65 L 65 75 L 60 85 L 55 95 L 50 90 L 45 80 L 40 70 L 35 65 L 30 60 L 25 55 L 20 50 L 25 45 L 30 40 L 25 35 L 30 30 L 35 25 L 40 20 Z" 
-            fill="#00D4FF" 
-            fillOpacity="0.05" 
-            stroke="#00D4FF" 
-            strokeWidth="1" 
-            strokeOpacity="0.8"
-            filter="url(#neon-glow)"
-          />
         </svg>
 
-        {/* Map Nodes */}
-        {MAP_NODES.map((node) => {
-          const color = getNodeColor(node);
-          const isBreached = node.isHQ && slaBreachSimulated;
-          const isHovered = activeNode === node.id;
-          
-          return (
-            <motion.div 
-              key={node.id}
-              className="absolute cursor-pointer z-20"
-              style={{ left: `${node.x}%`, top: `${node.y}%`, transform: 'translate(-50%, -50%)' }}
-              onMouseEnter={() => setActiveNode(node.id)}
-              onMouseLeave={() => setActiveNode(null)}
-              onClick={() => {
-                if (node.isHQ && hqTicket) {
-                  onTicketSelect(hqTicket); 
-                }
-              }}
-            >
-              {/* Pulsing Ring */}
-              <motion.div 
-                className="absolute inset-0 rounded-full"
-                style={{ backgroundColor: color }}
-                animate={{ 
-                  scale: isBreached ? [1, 3, 1] : [1, 1.8, 1], 
-                  opacity: [0.6, 0, 0.6] 
-                }}
-                transition={{ repeat: Infinity, duration: isBreached ? 1 : 2, ease: 'easeOut' }}
-              />
-              
-              {/* Core Dot */}
-              <div 
-                className="w-3 h-3 rounded-full border border-white/30 relative z-10 transition-transform duration-150"
-                style={{ 
-                  backgroundColor: color, 
-                  boxShadow: `0 0 ${isHovered ? 16 : 8}px ${color}`,
-                  transform: isHovered ? 'scale(1.4)' : 'scale(1)',
-                }}
-              />
+        <AdminMap 
+          slaBreachSimulated={slaBreachSimulated}
+          onHqClick={() => {
+            if (hqTicket) onTicketSelect(hqTicket);
+          }}
+        />
 
-              {/* Tactical Tooltip */}
-              <AnimatePresence>
-                {activeNode === node.id && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 8, scale: 0.92 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.92 }}
-                    className="absolute bottom-6 left-1/2 -translate-x-1/2 w-56 bg-[#0D1922] border border-[#1C303B] p-3 rounded-lg shadow-2xl z-50 pointer-events-none"
-                  >
-                    <div className="flex justify-between items-center mb-2 border-b border-[#1C303B] pb-1">
-                      <span className="text-[11px] font-bold text-[#E8F3F7]">{node.name}</span>
-                      {node.isHQ && <span className="text-[8px] bg-[#00D4FF] text-[#050A0F] px-1.5 py-0.5 rounded font-bold">HQ</span>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono">
-                      <div className="text-[#566B76]">Active Issues:</div>
-                      <div className="text-[#E8F3F7] text-right">{node.issues}</div>
-                      
-                      <div className="text-[#566B76]">SLA Breaches:</div>
-                      <div className={`text-right font-bold ${isBreached ? 'text-[#FF4D5A]' : 'text-[#35D07F]'}`}>
-                        {isBreached ? '3 (CRITICAL)' : node.slaBreaches}
-                      </div>
-
-                      <div className="text-[#566B76]">Trust Score:</div>
-                      <div className="text-[#35D07F] text-right flex items-center justify-end gap-1">
-                        <ShieldCheck size={9} /> 98.4%
-                      </div>
-                    </div>
-                    {node.isHQ && (
-                      <div className="mt-2 pt-1 border-t border-[#1C303B] text-[9px] text-[#00D4FF] font-mono text-center font-bold animate-pulse">
-                        [ CLICK TO INSPECT HQ TICKETS ]
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          );
-        })}
       </div>
 
       {/* Live Cryptographic Ledger (The Zero-Trust Proof) */}

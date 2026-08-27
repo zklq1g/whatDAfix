@@ -171,3 +171,14 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #00D4FF33;
 }
+
+/* Leaflet tooltip overrides */
+.custom-tooltip.leaflet-tooltip {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+.custom-tooltip.leaflet-tooltip::before {
+  display: none;
+}

@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import {
   ShieldAlert, Activity, AlertTriangle, CheckCircle2, MapPin, Wrench,
-  Download, ChevronDown, Users, ArrowLeftRight, Eye, Hash, Clock,
+  Download, ChevronDown, Users, ArrowLeftRight, Eye, Radio,
+  Cpu, ShieldCheck, X, Image as ImageIcon,
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -24,7 +25,12 @@ interface Ticket {
   upvote_count: number;
   frt_deadline: string | null;
   sla_deadline: string | null;
+  wip_started_at: string | null;
+  resolved_at: string | null;
   created_at: string;
+  category: string | null;
+  severity: number | null;
+  proof_of_work_hash: string | null;
   reporter?: { display_name: string } | null;
   worker?: { display_name: string } | null;
 }
@@ -55,7 +61,12 @@ const MOCK_TICKETS: Ticket[] = [
     upvote_count: 14,
     frt_deadline: new Date().toISOString(),
     sla_deadline: new Date().toISOString(),
+    wip_started_at: null,
+    resolved_at: null,
     created_at: new Date().toISOString(),
+    category: null,
+    severity: null,
+    proof_of_work_hash: null,
     reporter: { display_name: 'Citizen_99' },
   },
   {
@@ -68,7 +79,12 @@ const MOCK_TICKETS: Ticket[] = [
     upvote_count: 8,
     frt_deadline: new Date().toISOString(),
     sla_deadline: new Date().toISOString(),
+    wip_started_at: null,
+    resolved_at: null,
     created_at: new Date().toISOString(),
+    category: null,
+    severity: null,
+    proof_of_work_hash: null,
     reporter: { display_name: 'Local_Res' },
   },
   {
@@ -81,7 +97,12 @@ const MOCK_TICKETS: Ticket[] = [
     upvote_count: 22,
     frt_deadline: new Date().toISOString(),
     sla_deadline: new Date().toISOString(),
+    wip_started_at: null,
+    resolved_at: null,
     created_at: new Date().toISOString(),
+    category: null,
+    severity: null,
+    proof_of_work_hash: null,
     reporter: { display_name: 'Watcher_1' },
   },
 ];
@@ -94,8 +115,8 @@ export default function AdminCommandCenter() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [slaBreachSimulated, setSlaBreachSimulated] = useState(false);
-  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [demoOpen, setDemoOpen] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
 
   // ── Supabase fetch ──────────────────────────────────────────────────────
   const fetchTickets = useCallback(async () => {
@@ -375,98 +396,12 @@ export default function AdminCommandCenter() {
           </div>
         </section>
 
-        {/* ─── Q3: Zero-Trust Audit Trail ─── */}
-        <section className="bg-[#0D1922] border border-[#1C303B] rounded-lg flex flex-col overflow-hidden min-h-[380px]">
-          <div className="px-4 py-3 border-b border-[#1C303B] bg-[#08121A] flex justify-between items-center shrink-0">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-[#35D07F] flex items-center gap-2">
-              <Hash size={14} /> Zero-Trust Audit Trail
-            </h2>
-            <span className="text-[10px] font-mono text-[#566B76]">Ticket #8492</span>
-          </div>
-
-          <div className="flex-1 flex items-center justify-center p-6 overflow-x-auto">
-            <div className="flex items-start w-full max-w-2xl relative">
-              {/* Connecting line */}
-              <div className="absolute top-5 left-5 right-5 h-px bg-[#1C303B]" />
-
-              <AuditNode
-                icon={<MapPin size={16} />}
-                color="#00D4FF"
-                title="Reported"
-                time="10:42 AM"
-                tooltip={`GPS: 12.9716° N, 77.5946° E\nDevice: iPhone 13\nHash: 0x8f4e...a2`}
-                activeTooltip={activeTooltip}
-                setActiveTooltip={setActiveTooltip}
-              />
-
-              <AuditNode
-                icon={<Wrench size={16} />}
-                color="#FF9F43"
-                title="WIP Started"
-                time="11:15 AM"
-                tooltip={`Worker ID: W-992\nGeofence: VERIFIED\nEntry Hash: 0x2b1c...9f`}
-                activeTooltip={activeTooltip}
-                setActiveTooltip={setActiveTooltip}
-              />
-
-              {/* Conditional SLA breach node */}
-              <AnimatePresence>
-                {slaBreachSimulated && (
-                  <motion.div
-                    key="breach"
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0, opacity: 0 }}
-                    className="flex-1 flex flex-col items-center relative z-10"
-                  >
-                    <motion.div
-                      className="w-10 h-10 rounded-full bg-[#FF4D5A] flex items-center justify-center text-white shadow-[0_0_15px_rgba(255,77,90,0.5)]"
-                      animate={{ boxShadow: ['0 0 8px #FF4D5A', '0 0 22px #FF4D5A', '0 0 8px #FF4D5A'] }}
-                      transition={{ repeat: Infinity, duration: 2 }}
-                    >
-                      <AlertTriangle size={16} />
-                    </motion.div>
-                    <div className="mt-3 text-center">
-                      <div className="text-[11px] font-bold text-[#FF4D5A] uppercase">Delayed</div>
-                      <div className="text-[10px] font-mono text-[#7E939E]">SLA Exceeded</div>
-                      <div className="text-[10px] font-mono text-[#FF4D5A]">+4 Hours</div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <AuditNode
-                icon={<CheckCircle2 size={16} />}
-                color={slaBreachSimulated ? '#1C303B' : '#35D07F'}
-                title="Resolved"
-                time={slaBreachSimulated ? 'Pending…' : '02:30 PM'}
-                tooltip={`After Photo Hash:\n0x99a4...c1\nStatus: Cryptographically Sealed`}
-                active={!slaBreachSimulated}
-                activeTooltip={activeTooltip}
-                setActiveTooltip={setActiveTooltip}
-              />
-            </div>
-          </div>
-
-          {/* Audit metadata strip */}
-          <div className="px-4 py-3 border-t border-[#1C303B] bg-[#08121A] grid grid-cols-3 gap-2 shrink-0">
-            {[
-              { label: 'EXIF Match', value: 'PASS', ok: true },
-              { label: 'Geofence', value: slaBreachSimulated ? 'WARN' : 'PASS', ok: !slaBreachSimulated },
-              { label: 'Hash Sealed', value: slaBreachSimulated ? 'PENDING' : 'PASS', ok: !slaBreachSimulated },
-            ].map(item => (
-              <div key={item.label} className="text-center">
-                <div className="text-[10px] text-[#566B76] font-mono uppercase">{item.label}</div>
-                <div
-                  className="text-xs font-bold font-mono mt-0.5"
-                  style={{ color: item.ok ? '#35D07F' : '#FF9F43' }}
-                >
-                  {item.value}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* ─── Q3: National Escalation Grid (Geo-Spatial Threat Map) ─── */}
+        <LiveGeoMap
+          tickets={tickets}
+          slaBreachSimulated={slaBreachSimulated}
+          onTicketSelect={setSelectedTicket}
+        />
 
         {/* ─── Q4: Department Leaderboard ─── */}
         <section className="lg:col-span-2 bg-[#0D1922] border border-[#1C303B] rounded-lg flex flex-col overflow-hidden">
@@ -528,77 +463,429 @@ export default function AdminCommandCenter() {
         </section>
 
       </main>
-    </div>
-  );
-}
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-interface AuditNodeProps {
-  icon: React.ReactNode;
-  color: string;
-  title: string;
-  time: string;
-  tooltip: string;
-  active?: boolean;
-  activeTooltip: string | null;
-  setActiveTooltip: (v: string | null) => void;
-}
-
-function AuditNode({
-  icon, color, title, time, tooltip, active = true,
-  activeTooltip, setActiveTooltip,
-}: AuditNodeProps) {
-  const isHovered = activeTooltip === title;
-
-  return (
-    <div
-      className="flex-1 flex flex-col items-center relative cursor-pointer z-10"
-      onMouseEnter={() => active && setActiveTooltip(title)}
-      onMouseLeave={() => setActiveTooltip(null)}
-    >
-      <div
-        className="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200"
-        style={{
-          backgroundColor: active ? color : '#1C303B',
-          color: active ? '#050A0F' : '#566B76',
-          boxShadow: active ? `0 0 12px ${color}55` : 'none',
-        }}
-      >
-        {icon}
-      </div>
-      <div className="mt-3 text-center">
-        <div
-          className="text-[11px] font-bold uppercase tracking-wide"
-          style={{ color: active ? color : '#566B76' }}
-        >
-          {title}
-        </div>
-        <div className="text-[10px] font-mono text-[#566B76] flex items-center gap-1 justify-center mt-0.5">
-          <Clock size={8} /> {time}
-        </div>
-      </div>
-
-      {/* Tooltip */}
+      {/* ── Dark overlay behind slide-out panel ── */}
       <AnimatePresence>
-        {isHovered && active && (
+        {selectedTicket && (
           <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.95 }}
-            className="absolute top-16 bg-[#0D1922] border border-[#1C303B] p-3 rounded-lg shadow-2xl z-50 w-48 pointer-events-none"
-          >
-            <pre className="text-[10px] font-mono text-[#00D4FF] whitespace-pre-wrap leading-relaxed">
-              {tooltip}
-            </pre>
-          </motion.div>
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black z-40"
+            onClick={() => setSelectedTicket(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Ticket Detail Slide-Out Panel ── */}
+      <AnimatePresence>
+        {selectedTicket && (
+          <TicketDetailPanel
+            ticket={selectedTicket}
+            onClose={() => setSelectedTicket(null)}
+            slaBreachSimulated={slaBreachSimulated}
+          />
         )}
       </AnimatePresence>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Static geo data & ledger seeds
+// ---------------------------------------------------------------------------
+
+const MAP_NODES = [
+  { id: 'delhi',   name: 'New Delhi (Ward 12)',        x: 48, y: 28, issues: 42,  slaBreaches: 0, isHQ: false },
+  { id: 'mumbai',  name: 'Mumbai (Ward 8)',             x: 34, y: 58, issues: 88,  slaBreaches: 1, isHQ: false },
+  { id: 'kolkata', name: 'Kolkata (Ward 4)',            x: 74, y: 44, issues: 15,  slaBreaches: 0, isHQ: false },
+  { id: 'chennai', name: 'Chennai (Ward 19)',           x: 56, y: 80, issues: 34,  slaBreaches: 0, isHQ: false },
+  { id: 'ward42',  name: 'Bengaluru (Ward 42 — HQ)',   x: 50, y: 72, issues: 142, slaBreaches: 0, isHQ: true  },
+  { id: 'hyd',     name: 'Hyderabad (Ward 31)',         x: 53, y: 64, issues: 57,  slaBreaches: 0, isHQ: false },
+  { id: 'pune',    name: 'Pune (Ward 7)',               x: 38, y: 62, issues: 29,  slaBreaches: 0, isHQ: false },
+];
+
+const LEDGER_SEED = [
+  { time: '10:42:01', hash: '0x8f4e...a2', action: 'GPS Verified',          status: 'PASS' },
+  { time: '10:42:15', hash: '0x2b1c...9f', action: 'Worker Geofence Entry', status: 'PASS' },
+  { time: '10:43:02', hash: '0x99a4...c1', action: 'After-Photo Sealed',    status: 'PASS' },
+  { time: '10:44:10', hash: '0x11f2...b4', action: 'AI Confidence Check',   status: 'PASS' },
+];
+
+const LEDGER_ACTIONS = [
+  'Image Hash Sealed', 'GPS Spoofing Check', 'SLA Timer Sync',
+  'Crowd Escalation', 'EXIF Metadata Verified', 'Geofence Ping',
+];
+
+// ---------------------------------------------------------------------------
+// LiveGeoMap
+// ---------------------------------------------------------------------------
+
+interface LiveGeoMapProps {
+  tickets: Ticket[];
+  slaBreachSimulated: boolean;
+  onTicketSelect: (t: Ticket) => void;
+}
+
+function LiveGeoMap({ tickets, slaBreachSimulated, onTicketSelect }: LiveGeoMapProps) {
+  const [activeNode, setActiveNode] = useState<string | null>(null);
+  const [ledger, setLedger] = useState(LEDGER_SEED);
+
+  // Tick live ledger every 3 s
+  useEffect(() => {
+    const id = setInterval(() => {
+      setLedger(prev => [{
+        time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+        hash: `0x${Math.random().toString(16).slice(2, 6)}...${Math.random().toString(16).slice(2, 4)}`,
+        action: LEDGER_ACTIONS[Math.floor(Math.random() * LEDGER_ACTIONS.length)],
+        status: 'PASS',
+      }, ...prev].slice(0, 5));
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  const nodeColor = (node: typeof MAP_NODES[0]) => {
+    if (node.id === 'mumbai') return '#FF9F43'; // always amber (has SLA breach)
+    if (node.isHQ && slaBreachSimulated) return '#FF4D5A';
+    return '#00D4FF';
+  };
+
+  const hqTicket = tickets.find(t => t.status !== 'rejected') ?? tickets[0] ?? null;
+
+  return (
+    <section className="bg-[#0D1922] border border-[#1C303B] rounded-lg flex flex-col overflow-hidden min-h-[380px]">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-[#1C303B] bg-[#08121A] flex justify-between items-center shrink-0">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-[#00D4FF] flex items-center gap-2">
+          <Radio size={14} className="animate-pulse" /> National Escalation Grid
+        </h2>
+        <span className="text-[10px] font-mono text-[#566B76]">Zero-Trust Geofence Active · 7 Wards</span>
+      </div>
+
+      {/* Map canvas */}
+      <div className="flex-1 relative bg-[#050A0F] overflow-hidden">
+        {/* Dot-grid radar background */}
+        <div
+          className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: 'radial-gradient(circle, #00D4FF 1px, transparent 1px)', backgroundSize: '22px 22px' }}
+        />
+
+        {/* SVG India silhouette */}
+        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full p-6 opacity-[0.12]" preserveAspectRatio="xMidYMid meet">
+          <path
+            d="M42,8 L52,9 L63,12 L72,20 L80,30 L82,42 L78,52 L83,62 L74,74 L63,87 L54,96 L46,91 L36,77 L26,66 L20,52 L22,38 L28,24 L36,14 Z"
+            fill="none" stroke="#00D4FF" strokeWidth="0.6" strokeDasharray="2 2"
+          />
+          {/* Kashmir */}
+          <path d="M42,8 L46,4 L52,5 L56,8 L52,9 Z" fill="none" stroke="#00D4FF" strokeWidth="0.4" strokeDasharray="1 2" />
+          {/* North-east */}
+          <path d="M80,30 L87,28 L88,35 L82,42 Z" fill="none" stroke="#00D4FF" strokeWidth="0.4" strokeDasharray="1 2" />
+        </svg>
+
+        {/* Map nodes */}
+        {MAP_NODES.map(node => {
+          const color = nodeColor(node);
+          const isBreached = node.isHQ && slaBreachSimulated;
+          const isHovered = activeNode === node.id;
+
+          return (
+            <motion.div
+              key={node.id}
+              className="absolute z-20 cursor-pointer"
+              style={{ left: `${node.x}%`, top: `${node.y}%`, transform: 'translate(-50%, -50%)' }}
+              onMouseEnter={() => setActiveNode(node.id)}
+              onMouseLeave={() => setActiveNode(null)}
+              onClick={() => {
+                if (node.isHQ && hqTicket) onTicketSelect(hqTicket);
+              }}
+            >
+              {/* Pulse ring */}
+              <motion.div
+                className="absolute rounded-full"
+                style={{ backgroundColor: color, inset: 0 }}
+                animate={{ scale: isBreached ? [1, 3, 1] : [1, 2, 1], opacity: [0.6, 0, 0.6] }}
+                transition={{ repeat: Infinity, duration: isBreached ? 1 : 2.5, ease: 'easeOut' }}
+              />
+              {/* Core dot */}
+              <div
+                className="w-3 h-3 rounded-full border border-white/30 relative z-10 transition-transform duration-150"
+                style={{
+                  backgroundColor: color,
+                  boxShadow: `0 0 ${isHovered ? 16 : 8}px ${color}`,
+                  transform: isHovered ? 'scale(1.4)' : 'scale(1)',
+                }}
+              />
+              {/* HQ label */}
+              {node.isHQ && (
+                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[8px] font-bold text-[#00D4FF] whitespace-nowrap font-mono">
+                  HQ ▲
+                </div>
+              )}
+
+              {/* Tactical tooltip */}
+              <AnimatePresence>
+                {isHovered && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.92 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.92 }}
+                    className="absolute bottom-6 left-1/2 -translate-x-1/2 w-52 bg-[#0D1922] border border-[#1C303B] p-3 rounded-lg shadow-2xl z-50 pointer-events-none"
+                  >
+                    <div className="flex justify-between items-center mb-2 pb-1 border-b border-[#1C303B]">
+                      <span className="text-[11px] font-bold text-[#E8F3F7]">{node.name}</span>
+                      {node.isHQ && (
+                        <span className="text-[8px] bg-[#00D4FF] text-[#050A0F] px-1.5 py-0.5 rounded font-bold">HQ</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono">
+                      <span className="text-[#566B76]">Active Issues</span>
+                      <span className="text-[#E8F3F7] text-right">{node.issues}</span>
+                      <span className="text-[#566B76]">SLA Breaches</span>
+                      <span className={`text-right font-bold ${isBreached || node.slaBreaches > 0 ? 'text-[#FF4D5A]' : 'text-[#35D07F]'}`}>
+                        {isBreached ? '3 (CRITICAL)' : node.slaBreaches}
+                      </span>
+                      <span className="text-[#566B76]">Trust Score</span>
+                      <span className="text-[#35D07F] text-right flex items-center justify-end gap-1">
+                        <ShieldCheck size={9} /> 98.4%
+                      </span>
+                    </div>
+                    {node.isHQ && (
+                      <div className="mt-2 pt-1 border-t border-[#1C303B] text-[9px] text-[#00D4FF] font-mono text-center">
+                        Click to inspect live ticket →
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Live Cryptographic Ledger strip */}
+      <div className="border-t border-[#1C303B] bg-[#050A0F] px-3 pt-2 pb-1 relative shrink-0 h-[90px] overflow-hidden">
+        <div className="flex items-center gap-2 mb-1.5">
+          <ShieldCheck size={10} className="text-[#35D07F] shrink-0" />
+          <span className="text-[9px] font-bold uppercase tracking-widest text-[#35D07F]">
+            Live Cryptographic Verification Ledger
+          </span>
+        </div>
+        <div className="space-y-1">
+          <AnimatePresence mode="popLayout">
+            {ledger.map(log => (
+              <motion.div
+                key={log.time + log.hash}
+                layout
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center gap-2 font-mono text-[10px] text-[#566B76]"
+              >
+                <span className="text-[#1C303B] shrink-0">[{log.time}]</span>
+                <span className="text-[#00D4FF] shrink-0">{log.hash}</span>
+                <span className="text-[#7E939E] truncate">{log.action}</span>
+                <span className="ml-auto text-[#35D07F] flex items-center gap-0.5 shrink-0">
+                  <CheckCircle2 size={9} /> {log.status}
+                </span>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+        {/* Fade-out bottom */}
+        <div className="absolute bottom-0 left-0 right-0 h-5 bg-gradient-to-t from-[#050A0F] to-transparent pointer-events-none" />
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TicketDetailPanel  (slide-out from right)
+// ---------------------------------------------------------------------------
+
+interface TicketDetailPanelProps {
+  ticket: Ticket;
+  onClose: () => void;
+  slaBreachSimulated: boolean;
+}
+
+function TicketDetailPanel({ ticket, onClose, slaBreachSimulated }: TicketDetailPanelProps) {
+  const statusColors: Record<string, string> = {
+    open: '#00D4FF', wip: '#FF9F43', resolved: '#35D07F', rejected: '#FF4D5A',
+  };
+  const statusColor = statusColors[ticket.status] ?? '#7E939E';
+
+  const auditSteps = [
+    {
+      icon: <MapPin size={13} />, color: '#00D4FF', title: 'Reported by Citizen',
+      time: new Date(ticket.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+      detail: `User: ${ticket.reporter?.display_name ?? 'Anonymous'}\nGPS: 12.9716° N, 77.5946° E\nDevice: Android / iOS\nHash: 0x8f4e...a2`,
+    },
+    {
+      icon: <Cpu size={13} />, color: '#B66CFF', title: 'AI Classification',
+      time: '+43s',
+      detail: `Label: ${ticket.ai_label ?? 'Unknown'}\nConfidence: ${((ticket.ai_confidence ?? 0) * 100).toFixed(0)}%\nAction: ${(ticket.ai_confidence ?? 1) < 0.8 ? 'Sent to Crowd Review' : 'Auto-routed to dept'}`,
+    },
+    {
+      icon: <Wrench size={13} />, color: '#FF9F43', title: 'Worker Assigned',
+      time: ticket.wip_started_at
+        ? new Date(ticket.wip_started_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        : 'Pending',
+      detail: `Worker: ${ticket.worker?.display_name ?? 'Unassigned'}\nGeofence Entry: ${ticket.wip_started_at ? 'VERIFIED' : 'NOT YET'}`,
+    },
+    {
+      icon: <AlertTriangle size={13} />,
+      color: slaBreachSimulated ? '#FF4D5A' : '#1C303B',
+      title: 'SLA Status',
+      time: slaBreachSimulated ? 'BREACHED' : 'Within Limit',
+      detail: slaBreachSimulated
+        ? 'BREACH: Exceeded 48h limit\nPenalty: 5% Contractor Deduction\nAuto-escalated to Commissioner'
+        : 'Resolution on track.\nNo penalties triggered.',
+    },
+    {
+      icon: <CheckCircle2 size={13} />,
+      color: ticket.status === 'resolved' ? '#35D07F' : '#1C303B',
+      title: 'Resolution Evidence',
+      time: ticket.resolved_at
+        ? new Date(ticket.resolved_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        : 'Awaiting',
+      detail: ticket.proof_of_work_hash
+        ? `After-Photo Hash:\n${ticket.proof_of_work_hash}\nStatus: Cryptographically Sealed`
+        : 'Resolution not yet submitted.',
+    },
+  ];
+
+  return (
+    <motion.div
+      initial={{ x: '100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '100%' }}
+      transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+      className="fixed top-0 right-0 h-full w-full max-w-md bg-[#0A141C] border-l border-[#1C303B] shadow-2xl z-50 flex flex-col"
+    >
+      {/* Panel header */}
+      <div className="px-5 py-4 border-b border-[#1C303B] bg-[#050A0F] flex justify-between items-start shrink-0">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-base font-bold text-[#E8F3F7] font-mono">
+              Ticket #{ticket.id.slice(0, 8).toUpperCase()}
+            </h2>
+            <span
+              className="text-[10px] font-bold uppercase px-2 py-0.5 rounded"
+              style={{ backgroundColor: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}40` }}
+            >
+              {ticket.status}
+            </span>
+          </div>
+          <p className="text-xs text-[#7E939E] font-mono">{ticket.ai_label ?? 'Unknown Issue'} · {ticket.category}</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="text-[#566B76] hover:text-[#E8F3F7] transition-colors mt-0.5"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+
+        {/* Before / After evidence */}
+        <div className="px-5 pt-4 pb-3">
+          <div className="flex items-center gap-2 mb-3">
+            <ImageIcon size={11} className="text-[#566B76]" />
+            <span className="text-[10px] font-bold text-[#566B76] uppercase tracking-widest">Visual Evidence</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'BEFORE', url: ticket.before_image_url },
+              { label: 'AFTER',  url: ticket.after_image_url  },
+            ].map(({ label, url }) => (
+              <div key={label}>
+                <div className="text-[9px] font-mono text-[#566B76] mb-1">{label}</div>
+                <img
+                  src={url
+                    ? (url.startsWith('http') ? url : supabase.storage.from('civic-evidence').getPublicUrl(url).data.publicUrl)
+                    : 'https://placehold.co/400x300/0D1922/1C303B?text=No+Image'
+                  }
+                  alt={label}
+                  className="w-full h-28 object-cover rounded border border-[#1C303B]"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* AI & telemetry row */}
+        <div className="mx-5 mb-4 bg-[#050A0F] border border-[#1C303B] rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Cpu size={11} className="text-[#B66CFF]" />
+            <span className="text-[10px] font-bold text-[#566B76] uppercase tracking-widest">AI & Telemetry</span>
+          </div>
+          <div className="grid grid-cols-2 gap-y-2 text-xs font-mono">
+            {[
+              { k: 'AI Label',    v: ticket.ai_label ?? '—',       c: '#E8F3F7' },
+              { k: 'Confidence',  v: `${((ticket.ai_confidence ?? 0) * 100).toFixed(0)}%`, c: (ticket.ai_confidence ?? 1) < 0.8 ? '#FF9F43' : '#35D07F' },
+              { k: 'Upvotes',     v: `${ticket.upvote_count} citizens`, c: '#00D4FF' },
+              { k: 'Severity',    v: `${ticket.severity ?? '—'}/100`,    c: '#E8F3F7' },
+            ].map(({ k, v, c }) => (
+              <React.Fragment key={k}>
+                <span className="text-[#566B76]">{k}</span>
+                <span className="text-right" style={{ color: c }}>{v}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        {/* Zero-Trust Audit trail (vertical timeline) */}
+        <div className="px-5 pb-4">
+          <div className="flex items-center gap-2 mb-4">
+            <ShieldCheck size={11} className="text-[#35D07F]" />
+            <span className="text-[10px] font-bold text-[#566B76] uppercase tracking-widest">Zero-Trust Audit Trail</span>
+          </div>
+          <div className="relative pl-6 border-l-2 border-[#1C303B] space-y-5">
+            {auditSteps.map((step, i) => (
+              <div key={i} className="relative">
+                <div
+                  className="absolute -left-[25px] top-0 w-[22px] h-[22px] rounded-full flex items-center justify-center border-2 border-[#0A141C] shrink-0"
+                  style={{ backgroundColor: step.color, color: step.color === '#1C303B' ? '#566B76' : '#050A0F' }}
+                >
+                  {step.icon}
+                </div>
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="text-xs font-bold text-[#E8F3F7]">{step.title}</span>
+                  <span className="text-[10px] font-mono text-[#566B76]">{step.time}</span>
+                </div>
+                <pre className="text-[10px] font-mono text-[#7E939E] whitespace-pre-wrap leading-relaxed bg-[#050A0F] p-2 rounded border border-[#1C303B]">
+                  {step.detail}
+                </pre>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer actions */}
+      <div className="px-5 py-4 border-t border-[#1C303B] bg-[#050A0F] grid grid-cols-2 gap-3 shrink-0">
+        <button
+          onClick={onClose}
+          className="py-2 text-xs font-bold bg-[#FF4D5A]/10 text-[#FF4D5A] border border-[#FF4D5A]/30 rounded hover:bg-[#FF4D5A]/20 transition-colors"
+        >
+          Reject & Fine
+        </button>
+        <button
+          onClick={onClose}
+          className="py-2 text-xs font-bold bg-[#35D07F] text-[#050A0F] rounded hover:bg-[#2BAF6A] transition-colors"
+        >
+          Verify & Close
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LeaderboardRow
+// ---------------------------------------------------------------------------
 
 interface LeaderboardRowProps {
   rank: number;
@@ -619,14 +906,8 @@ function LeaderboardRow({ rank, dept, contractor, rate, sla, color, trend, trend
       <td className="p-4 text-[#7E939E] text-sm">{contractor}</td>
       <td className="p-4 font-mono text-right font-bold" style={{ color }}>
         {rate}%
-        <div
-          className="w-full bg-[#1C303B] rounded-full h-1 mt-1"
-          style={{ maxWidth: '80px', marginLeft: 'auto' }}
-        >
-          <div
-            className="h-1 rounded-full transition-all duration-700"
-            style={{ width: `${rate}%`, backgroundColor: color }}
-          />
+        <div className="w-full bg-[#1C303B] rounded-full h-1 mt-1" style={{ maxWidth: '80px', marginLeft: 'auto' }}>
+          <div className="h-1 rounded-full transition-all duration-700" style={{ width: `${rate}%`, backgroundColor: color }} />
         </div>
       </td>
       <td className="p-4 font-mono text-right text-[#7E939E] text-sm">{sla}</td>

@@ -218,6 +218,18 @@ export default function DepartmentPortal() {
     setIsProcessing(true);
     setCurrentState(5);
 
+    // Reverifying Location
+    if (demo.badGps) {
+      await runFakeLogs([
+        "Re-verifying GPS Geofence...",
+        "Checking Cell-Tower Triangulation...",
+        "Error: Mock Location Detected.",
+        "Submission Halted. Physical Presence Unverified."
+      ], 600);
+      setIsProcessing(false);
+      return;
+    }
+
     const blob = await (await fetch(capturedImage)).blob();
     // Bypassing auth for demo: we use a random session ID for storage
     const sessionId =
@@ -496,7 +508,13 @@ export default function DepartmentPortal() {
                 </>
               ) : (
                 <>
-                  {!demo.aiConfusion ? (
+                  {demo.badGps ? (
+                    <>
+                      <AlertTriangle size={64} className="text-[#FF3366] mb-4" />
+                      <h2 className="text-[#E8F3F7] font-bold text-xl mb-2">Location Spoofed</h2>
+                      <p className="text-[#7E939E] text-sm mb-8">Physical presence verification failed during submission. Mock location detected.</p>
+                    </>
+                  ) : !demo.aiConfusion ? (
                     <>
                       <CheckCircle size={64} className="text-[#00FF9D] mb-4" />
                       <h2 className="text-[#E8F3F7] font-bold text-xl mb-2">Ticket Resolved</h2>

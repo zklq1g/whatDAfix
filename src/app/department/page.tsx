@@ -431,7 +431,14 @@ export default function DepartmentPortal() {
               <div className="flex-1 p-4 flex flex-col justify-center items-center text-center">
                 <Scan size={64} className="text-[#00E5FF] mb-4 animate-spin" style={{ animationDuration: '3s' }} />
                 <p className="text-[#B5C6CE] text-sm">Location Locked. Telemetry Active.</p>
-                <p className="text-[#566B76] text-xs mt-2">Complete the repair and capture cryptographic proof to close ticket.</p>
+                <p className="text-[#566B76] text-xs mt-2 mb-6">Complete the repair and capture cryptographic proof to close ticket.</p>
+                
+                <button 
+                  onClick={() => handleNavigate(selectedTicket.latitude, selectedTicket.longitude)}
+                  className="bg-[#0D1922] border border-[#1C303B] text-[#00E5FF] px-6 py-3 rounded-lg hover:bg-[#111F29] transition flex items-center gap-2 text-sm font-bold"
+                >
+                  <Navigation size={16} /> NAVIGATE TO SITE
+                </button>
               </div>
 
               <div className="p-4 border-t border-[#1C303B] bg-[#08121A]">

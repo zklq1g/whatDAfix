@@ -563,39 +563,17 @@ function LiveGeoMap({ tickets, slaBreachSimulated, onTicketSelect }: LiveGeoMapP
         <h2 className="text-xs font-bold uppercase tracking-widest text-[#00D4FF] flex items-center gap-2">
           <Radio size={14} className="animate-pulse" /> National Escalation Grid
         </h2>
-        <span className="text-[10px] font-mono text-[#566B76]">Zero-Trust Geofence Active · 5 Wards</span>
+        <span className="text-[10px] font-mono text-[#566B76]">Zero-Trust Geofence Active · 7 Wards</span>
       </div>
       
-      {/* Map Area */}
+      {/* Map Area — Leaflet renders here */}
       <div className="flex-1 relative bg-[#050A0F] overflow-hidden min-h-[300px]">
-        {/* Radar Grid Background */}
-        <div className="absolute inset-0 opacity-[0.07] z-10 pointer-events-none" 
-          style={{ backgroundImage: 'radial-gradient(circle, #00D4FF 1px, transparent 1px)', backgroundSize: '22px 22px' }}>
-        </div>
-        
-        {/* Radar Rings & Sweep Animation overlaying the map */}
-        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full p-4 z-10 pointer-events-none" preserveAspectRatio="xMidYMid meet">
-          <circle cx="50" cy="50" r="40" fill="none" stroke="#00D4FF" strokeWidth="0.2" strokeOpacity="0.3" strokeDasharray="2 2" />
-          <circle cx="50" cy="50" r="25" fill="none" stroke="#00D4FF" strokeWidth="0.2" strokeOpacity="0.3" strokeDasharray="2 2" />
-          <line x1="50" y1="50" x2="50" y2="10" stroke="#00D4FF" strokeWidth="0.5" strokeOpacity="0.6">
-            <animateTransform 
-              attributeName="transform" 
-              type="rotate" 
-              from="0 50 50" 
-              to="360 50 50" 
-              dur="4s" 
-              repeatCount="indefinite" 
-            />
-          </line>
-        </svg>
-
-        <AdminMap 
+        <AdminMap
           slaBreachSimulated={slaBreachSimulated}
           onHqClick={() => {
             if (hqTicket) onTicketSelect(hqTicket);
           }}
         />
-
       </div>
 
       {/* Live Cryptographic Ledger (The Zero-Trust Proof) */}

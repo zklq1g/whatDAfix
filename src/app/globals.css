@@ -179,6 +179,11 @@
   box-shadow: none;
   padding: 0;
 }
+
+/* Dark filter for OpenStreetMap tiles — no API key needed */
+.map-dark-filter {
+  filter: invert(100%) hue-rotate(180deg) brightness(0.75) contrast(0.9) saturate(0.6);
+}
 .custom-tooltip.leaflet-tooltip::before {
   display: none;
 }

@@ -563,7 +563,7 @@ function LiveGeoMap({ tickets, slaBreachSimulated, onTicketSelect }: LiveGeoMapP
         <h2 className="text-xs font-bold uppercase tracking-widest text-[#00D4FF] flex items-center gap-2">
           <Radio size={14} className="animate-pulse" /> National Escalation Grid
         </h2>
-        <span className="text-[10px] font-mono text-[#566B76]">Zero-Trust Geofence Active · 7 Wards</span>
+        <span className="text-[10px] font-mono text-[#566B76]">Zero-Trust Geofence Active · 145+ Wards</span>
       </div>
       
       {/* Map Area — Leaflet renders here */}

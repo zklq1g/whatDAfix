@@ -265,12 +265,12 @@ export function AdminMap({ slaBreachSimulated, onHqClick }: { slaBreachSimulated
           <CircleMarker
             key={node.id}
             center={[node.lat, node.lng]}
-            radius={isBreached ? 14 : node.isHQ ? 11 : 8}
+            radius={isBreached ? 8 : node.isHQ ? 6 : 3}
             pathOptions={{
               color,
               fillColor: color,
-              fillOpacity: isBreached ? 1 : 0.85,
-              weight: isBreached ? 3 : 2,
+              fillOpacity: isBreached ? 0.8 : 0.3,
+              weight: isBreached ? 2 : 1,
             }}
             eventHandlers={{
               click: () => { if (node.isHQ) onHqClick(); }

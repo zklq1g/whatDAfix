@@ -177,7 +177,14 @@ export default function AdminCommandCenter() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setTickets(data && data.length > 0 ? (data as Ticket[]) : MOCK_TICKETS);
+      
+      // Combine live data with mock data to ensure the demo always has a rich queue
+      const liveTickets = data ? (data as Ticket[]) : [];
+      
+      // Filter out any mocks that happen to have the same ID as a live ticket (unlikely but safe)
+      const uniqueMocks = MOCK_TICKETS.filter(mt => !liveTickets.some(lt => lt.id === mt.id));
+      
+      setTickets([...liveTickets, ...uniqueMocks]);
     } catch {
       setTickets(MOCK_TICKETS);
     } finally {

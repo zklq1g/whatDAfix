@@ -187,3 +187,34 @@
 .custom-tooltip.leaflet-tooltip::before {
   display: none;
 }
+
+/* Override Leaflet Defaults for Dark Mode */
+@import 'leaflet/dist/leaflet.css';
+.leaflet-container {
+  background: #050A0F !important;
+  font-family: 'Inter', sans-serif;
+}
+.leaflet-popup-content-wrapper {
+  background: rgba(13, 25, 34, 0.95) !important;
+  color: #E2E8F0 !important;
+  border: 1px solid #1C303B !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(8px);
+}
+.leaflet-popup-tip {
+  background: rgba(13, 25, 34, 0.95) !important;
+  border: 1px solid #1C303B !important;
+  box-shadow: none !important;
+}
+.leaflet-popup-close-button {
+  color: #64748B !important;
+  font-size: 20px !important;
+  padding: 8px 10px 0 0 !important;
+}
+.leaflet-popup-close-button:hover {
+  color: #FF3366 !important;
+}
+/* Hide default zoom controls */
+.leaflet-control-zoom { display: none !important; }
+.leaflet-control-attribution { display: none !important; }

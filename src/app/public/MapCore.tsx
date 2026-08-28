@@ -1,9 +1,9 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
-import { Ticket } from './page'; // Adjust path if needed
+import React, { useMemo, useState, useCallback, useRef } from 'react';
+import Map, { Marker, Popup } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { Ticket } from './page';
 import { getImageUrl } from './page';
 import { AlertTriangle, CheckCircle2, Clock, Hash, Image as ImageIcon } from 'lucide-react';
-import React from 'react';
 
 const CONTRACTORS: Record<string, string> = {
   'PWD': 'L&T Infrastructure',
@@ -12,46 +12,18 @@ const CONTRACTORS: Record<string, string> = {
   'Electricity': 'Bescom Grid Ops'
 };
 
-// Custom Pin Icons
-const createIcon = (status: string, isCluster = false, count = 0) => {
-  let color = '#FFB020'; // WIP
-  let shadow = '0 0 10px #FFB020';
-  let innerHtml = '';
+// No API Key Required for CartoDB Dark Matter Vector Tiles!
+const styleUrl = `https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json`;
 
-  if (status === 'open') { color = '#FF3366'; shadow = '0 0 15px #FF3366'; }
-  if (status === 'resolved') { color = '#00FF9D'; shadow = '0 0 10px #00FF9D'; innerHtml = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#050A0F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`; }
-  if (isCluster) { color = '#00E5FF'; shadow = '0 0 15px #00E5FF'; innerHtml = `<span style="color:#050A0F;font-weight:bold;font-size:12px;">${count}</span>`; }
-
-  const pulseClass = status === 'open' ? 'pulse-ring' : '';
-
-  return L.divIcon({
-    className: 'custom-pin',
-    html: `
-      <div style="position:relative; display:flex; align-items:center; justify-content:center; width:24px; height:24px;">
-        <div class="${pulseClass}" style="position:absolute; inset:0; border-radius:50%; border:2px solid ${color}; opacity:0;"></div>
-        <div style="width:16px; height:16px; background:${color}; border-radius:50%; box-shadow:${shadow}; display:flex; align-items:center; justify-content:center; border:2px solid rgba(255,255,255,0.8); z-index:10;">
-          ${innerHtml}
-        </div>
-      </div>
-      <style>
-        .pulse-ring { animation: pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1); }
-        @keyframes pulse { 0% { transform: scale(0.8); opacity: 0.8; } 100% { transform: scale(2.5); opacity: 0; } }
-        .custom-pin { background: transparent !important; border: none !important; }
-      </style>
-    `,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12]
-  });
-};
 
 export default function MapCore({ tickets }: { tickets: Ticket[] }) {
-  // Simple clustering logic
-  const clusters = React.useMemo(() => {
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const mapRef = useRef(null);
+
+  const clusters = useMemo(() => {
     const map = new Map<string, Ticket[]>();
     tickets.forEach(t => {
       if (!t.location?.lat) return;
-      // Grid clustering
       const key = `${Math.round(t.location.lat * 200)}_${Math.round(t.location.lng * 200)}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
@@ -59,56 +31,140 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
     return Array.from(map.values());
   }, [tickets]);
 
+  const onMapLoad = useCallback((event: any) => {
+    const map = event.target;
+    
+    // Add 3D Building Extrusion Layer
+    // Try to find the correct label layer to insert under
+    const layers = map.getStyle().layers;
+    let labelLayerId;
+    for (let i = 0; i < layers.length; i++) {
+        if (layers[i].type === 'symbol' && layers[i].layout['text-field']) {
+            labelLayerId = layers[i].id;
+            break;
+        }
+    }
+
+    // Using a try-catch because if the source doesn't have 'building', it throws.
+    // 'v3' or 'openmaptiles' depending on the source provider
+    try {
+      // Find the vector source that likely contains building data
+      const sources = map.getStyle().sources;
+      const sourceName = Object.keys(sources).find(k => sources[k].type === 'vector') || 'openmaptiles';
+      
+      // In CartoDB, the source-layer is usually 'building' or 'buildings'
+      map.addLayer({
+          'id': '3d-buildings',
+          'source': sourceName,
+          'source-layer': 'building',
+          'type': 'fill-extrusion',
+          'minzoom': 14,
+          'paint': {
+              'fill-extrusion-color': [
+                  'interpolate', ['linear'], ['get', 'render_height'],
+                  0, '#1a233a',
+                  50, '#233356',
+                  100, '#2d4373',
+                  200, '#3c5a99'
+              ],
+              'fill-extrusion-height': [
+                  'interpolate', ['linear'], ['zoom'],
+                  15, 0,
+                  15.05, ['get', 'render_height']
+              ],
+              'fill-extrusion-base': [
+                  'interpolate', ['linear'], ['zoom'],
+                  15, 0,
+                  15.05, ['get', 'render_min_height']
+              ],
+              'fill-extrusion-opacity': 0.85 
+          }
+      }, labelLayerId);
+    } catch (e) {
+      console.warn('Could not add 3D buildings layer. Is the source correct for your style?', e);
+    }
+  }, []);
+
   return (
-    <MapContainer 
-      center={[12.9716, 77.5946]} 
-      zoom={13} 
-      className="h-full w-full"
-      zoomControl={false}
-      attributionControl={false}
-    >
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        className="map-dark-filter"
-      />
+    <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
+      {/* Tactical HUD Overlay */}
+      <div className="absolute top-24 left-6 z-[1000] bg-[rgba(10,15,15,0.85)] border border-[#00ffcc] text-[#00ffcc] font-mono p-4 rounded shadow-[0_0_15px_rgba(0,255,204,0.2)] pointer-events-none text-xs">
+          <div>SYS_STATUS: ACTIVE</div>
+          <div>RENDER: 3D_EXTRUSH</div>
+          <div>VIEW_PITCH: 45°</div>
+      </div>
 
-      {clusters.map((cluster, idx) => {
-        const centerTicket = cluster[0];
-        const pos: [number, number] = [centerTicket.location.lat, centerTicket.location.lng];
-        const isCluster = cluster.length > 1;
+      <Map
+        ref={mapRef}
+        initialViewState={{
+          longitude: 77.5946, // Bangalore
+          latitude: 12.9716,
+          zoom: 15.5,
+          pitch: 45,
+          bearing: -17.6
+        }}
+        mapStyle={styleUrl}
+        onLoad={onMapLoad}
+        antialias={true}
+      >
+        {clusters.map((cluster, idx) => {
+          const centerTicket = cluster[0];
+          const isCluster = cluster.length > 1;
+          const status = centerTicket.status;
 
-        if (isCluster) {
+          let color = '#FFB020';
+          let shadow = '0 0 10px #FFB020';
+          let innerHtml = '';
+
+          if (status === 'open') { color = '#FF3366'; shadow = '0 0 15px #FF3366'; }
+          if (status === 'resolved') { 
+            color = '#00FF9D'; 
+            shadow = '0 0 10px #00FF9D'; 
+            innerHtml = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#050A0F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`; 
+          }
+          if (isCluster) { 
+            color = '#00E5FF'; 
+            shadow = '0 0 15px #00E5FF'; 
+            innerHtml = `<span style="color:#050A0F;font-weight:bold;font-size:12px;">${cluster.length}</span>`; 
+          }
+
           return (
-            <Marker key={`cluster-${idx}`} position={pos} icon={createIcon('cluster', true, cluster.length)}>
-              <Popup maxWidth={250}>
-                <div className="p-1">
-                  <h3 className="text-xs font-bold text-[#00E5FF] mb-2 uppercase tracking-wider">Multiple Issues ({cluster.length})</h3>
-                  <div className="space-y-1 max-h-32 overflow-y-auto custom-scrollbar">
-                    {cluster.map(t => (
-                      <div key={t.id} className="text-[10px] flex justify-between border-b border-[#1C303B] pb-1">
-                        <span className="text-gray-300">{t.category}</span>
-                        <span className={`font-mono font-bold ${t.status === 'open' ? 'text-[#FF3366]' : t.status === 'resolved' ? 'text-[#00FF9D]' : 'text-[#FFB020]'}`}>
-                          {t.status.toUpperCase()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Popup>
+            <Marker 
+              key={`marker-${idx}`}
+              longitude={centerTicket.location.lng} 
+              latitude={centerTicket.location.lat}
+              anchor="center"
+              onClick={e => {
+                e.originalEvent.stopPropagation();
+                setSelectedTicket(centerTicket);
+              }}
+            >
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', cursor: 'pointer' }}>
+                {status === 'open' && (
+                  <div className="absolute inset-0 rounded-full border-2 opacity-0 animate-[pulse_2s_infinite_cubic-bezier(0.4,0,0.6,1)]" style={{ borderColor: color }}></div>
+                )}
+                <div style={{ width: '16px', height: '16px', background: color, borderRadius: '50%', boxShadow: shadow, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,0.8)', zIndex: 10 }} dangerouslySetInnerHTML={{ __html: innerHtml }}></div>
+              </div>
             </Marker>
           );
-        }
+        })}
 
-        // Single Ticket Pin
-        return (
-          <Marker key={centerTicket.id} position={pos} icon={createIcon(centerTicket.status)}>
-            <Popup maxWidth={320}>
-              <TicketPopup ticket={centerTicket} />
-            </Popup>
-          </Marker>
-        );
-      })}
-    </MapContainer>
+        {selectedTicket && (
+          <Popup
+            longitude={selectedTicket.location.lng}
+            latitude={selectedTicket.location.lat}
+            anchor="bottom"
+            onClose={() => setSelectedTicket(null)}
+            closeOnClick={false}
+            maxWidth="320px"
+            className="tactical-popup"
+            offset={15}
+          >
+            <TicketPopup ticket={selectedTicket} />
+          </Popup>
+        )}
+      </Map>
+    </div>
   );
 }
 
@@ -117,7 +173,6 @@ function TicketPopup({ ticket }: { ticket: Ticket }) {
   const color = statusColors[ticket.status] || '#FFB020';
   const contractor = CONTRACTORS[ticket.assigned_to || ''] || 'Unknown Contractor';
   
-  // Mock SLA calculation
   const deadline = new Date(ticket.sla_deadline).getTime();
   const now = Date.now();
   const isBreached = now > deadline && ticket.status !== 'resolved';

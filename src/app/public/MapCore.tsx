@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import MapGL, { Marker, Popup } from 'react-map-gl/maplibre';
+import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ticket } from './page';
 import { getImageUrl } from './page';
@@ -52,6 +53,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
       const sourceName = Object.keys(sources).find(k => sources[k].type === 'vector') || 'openmaptiles';
       
       // In CartoDB, the source-layer is usually 'building' or 'buildings'
+      /*
       map.addLayer({
           'id': '3d-buildings',
           'source': sourceName,
@@ -79,6 +81,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
               'fill-extrusion-opacity': 0.85 
           }
       }, labelLayerId);
+      */
     } catch (e) {
       console.warn('Could not add 3D buildings layer. Is the source correct for your style?', e);
     }
@@ -95,6 +98,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
 
       <MapGL
         ref={mapRef}
+        mapLib={maplibregl}
         style={{ width: '100%', height: '100%' }}
         initialViewState={{
           longitude: 77.5946, // Bangalore

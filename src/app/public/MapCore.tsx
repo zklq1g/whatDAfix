@@ -40,71 +40,95 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
     return Array.from(ticketMap.values());
   }, [tickets]);
 
+  const [mapError, setMapError] = useState<string | null>(null);
+
   // Initialize map once
   useEffect(() => {
-    if (mapRef.current || !mapContainer.current) return;
+    if (!mapContainer.current) return;
+    if (mapRef.current) return; // Prevent double init in strict mode
 
-    const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
-    const styleUrl = MAPTILER_KEY
-      ? `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`
-      : 'https://tiles.openfreemap.org/styles/dark';
+    try {
+      const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+      const styleUrl = MAPTILER_KEY
+        ? `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`
+        : 'https://tiles.openfreemap.org/styles/dark';
 
-    const map = new MapLibre({
-      container: mapContainer.current,
-      style: styleUrl,
-      center: [77.5946, 20.9716], // Slightly north of Bangalore for a better globe angle
-      zoom: 1.8, // Zoomed out to clearly see the globe
-      pitch: 15,
-      bearing: 0,
-    });
+      const map = new MapLibre({
+        container: mapContainer.current,
+        style: styleUrl,
+        center: [77.5946, 20.9716],
+        zoom: 1.8,
+        pitch: 15,
+        bearing: 0,
+      });
 
-    map.on('load', () => {
-      // Enable globe projection!
-      map.setProjection({ type: 'globe' });
+      map.on('error', (e) => {
+        console.error("MapLibre Error:", e.error);
+        if (e.error?.message?.includes('403')) {
+          setMapError("API Key Restricted - Check Vercel Env Vars & Allowed Origins");
+        }
+      });
 
-      // Add 3D buildings
-      try {
-        const layers = map.getStyle().layers;
-        let labelLayerId: string | undefined;
-        for (const layer of layers) {
-          if (layer.type === 'symbol' && (layer.layout as any)?.['text-field']) {
-            labelLayerId = layer.id;
-            break;
-          }
+      map.on('load', () => {
+        try {
+          map.setProjection({ type: 'globe' });
+        } catch (err) {
+          console.warn("Globe projection not supported in this version", err);
         }
 
-        const sources = map.getStyle().sources;
-        const sourceName = Object.keys(sources).find(k => (sources[k] as any).type === 'vector') || 'openmaptiles';
-
-        map.addLayer({
-          id: '3d-buildings',
-          source: sourceName,
-          'source-layer': 'building',
-          type: 'fill-extrusion',
-          minzoom: 14,
-          paint: {
-            'fill-extrusion-color': [
-              'interpolate', ['linear'], ['get', 'render_height'],
-              0, '#1a233a', 50, '#233356', 100, '#2d4373', 200, '#3c5a99'
-            ] as any,
-            'fill-extrusion-height': [
-              'interpolate', ['linear'], ['zoom'],
-              15, 0, 15.05, ['get', 'render_height']
-            ] as any,
-            'fill-extrusion-base': [
-              'interpolate', ['linear'], ['zoom'],
-              15, 0, 15.05, ['get', 'render_min_height']
-            ] as any,
-            'fill-extrusion-opacity': 0.85,
+        // Add 3D buildings
+        try {
+          const layers = map.getStyle().layers;
+          let labelLayerId: string | undefined;
+          for (const layer of layers) {
+            if (layer.type === 'symbol' && (layer.layout as any)?.['text-field']) {
+              labelLayerId = layer.id;
+              break;
+            }
           }
-        }, labelLayerId);
-      } catch (e) {
-        console.warn('3D buildings failed:', e);
-      }
-    });
 
-    mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; };
+          const sources = map.getStyle().sources;
+          const sourceName = Object.keys(sources).find(k => (sources[k] as any).type === 'vector') || 'openmaptiles';
+
+          map.addLayer({
+            id: '3d-buildings',
+            source: sourceName,
+            'source-layer': 'building',
+            type: 'fill-extrusion',
+            minzoom: 14,
+            paint: {
+              'fill-extrusion-color': [
+                'interpolate', ['linear'], ['get', 'render_height'],
+                0, '#1a233a', 50, '#233356', 100, '#2d4373', 200, '#3c5a99'
+              ] as any,
+              'fill-extrusion-height': [
+                'interpolate', ['linear'], ['zoom'],
+                15, 0, 15.05, ['get', 'render_height']
+              ] as any,
+              'fill-extrusion-base': [
+                'interpolate', ['linear'], ['zoom'],
+                15, 0, 15.05, ['get', 'render_min_height']
+              ] as any,
+              'fill-extrusion-opacity': 0.85,
+            }
+          }, labelLayerId);
+        } catch (e) {
+          console.warn('3D buildings failed:', e);
+        }
+      });
+
+      mapRef.current = map;
+    } catch (e: any) {
+      console.error("Failed to init MapLibre", e);
+      setMapError(e.message || "Map failed to initialize");
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
   }, []);
 
   // Add/update markers when clusters change
@@ -258,7 +282,17 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
   }, [clusters]);
 
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
+    <div style={{ position: 'absolute', inset: 0, backgroundColor: '#050A0F' }}>
+      {mapError && (
+        <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/80 text-red-500 font-mono p-8 text-center">
+          <div>
+            <AlertTriangle size={48} className="mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-2">MAP RENDER FAILED</h2>
+            <p>{mapError}</p>
+          </div>
+        </div>
+      )}
+
       {/* Pulse ring keyframe */}
       <style>{`
         @keyframes pulse-ring {
@@ -293,7 +327,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
       </div>
 
       {/* Map container — raw div, MapLibre takes over */}
-      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+      <div ref={mapContainer} style={{ width: '100vw', height: '100vh', position: 'absolute', top: 0, left: 0, display: 'block' }} />
     </div>
   );
 }

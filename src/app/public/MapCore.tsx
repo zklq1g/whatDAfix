@@ -52,13 +52,16 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
     const map = new MapLibre({
       container: mapContainer.current,
       style: styleUrl,
-      center: [77.5946, 12.9716],
-      zoom: 14,
-      pitch: 45,
-      bearing: -17.6,
+      center: [77.5946, 20.9716], // Slightly north of Bangalore for a better globe angle
+      zoom: 1.8, // Zoomed out to clearly see the globe
+      pitch: 15,
+      bearing: 0,
     });
 
     map.on('load', () => {
+      // Enable globe projection!
+      map.setProjection({ type: 'globe' });
+
       // Add 3D buildings
       try {
         const layers = map.getStyle().layers;
@@ -231,6 +234,17 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
           .setPopup(popup)
           .addTo(map);
 
+        el.addEventListener('click', () => {
+          map.flyTo({
+            center: [centerTicket.location.lng, centerTicket.location.lat],
+            zoom: isCluster ? 13 : 16,
+            pitch: 45,
+            bearing: isCluster ? 0 : -17.6,
+            duration: 2000,
+            essential: true
+          });
+        });
+
         markersRef.current.push(marker);
       });
     };
@@ -274,8 +288,8 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
       {/* Tactical HUD */}
       <div className="absolute top-24 left-6 z-[1000] bg-[rgba(10,15,15,0.85)] border border-[#00ffcc] text-[#00ffcc] font-mono p-4 rounded shadow-[0_0_15px_rgba(0,255,204,0.2)] pointer-events-none text-xs">
         <div>SYS_STATUS: ACTIVE</div>
-        <div>RENDER: 3D_EXTRUDE</div>
-        <div>VIEW_PITCH: 45°</div>
+        <div>RENDER: GLOBE_3D</div>
+        <div>VIEW_PITCH: 15°</div>
       </div>
 
       {/* Map container — raw div, MapLibre takes over */}

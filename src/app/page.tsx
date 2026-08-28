@@ -58,7 +58,7 @@ const portals = [
     subtitle: "Radical Transparency",
     description:
       "Live city heatmap of every civic issue — red for unresolved, green for fixed. Department leaderboard. Taxpayer ROI tracker. Open to all.",
-    href: "/map",
+    href: "/public",
     icon: Map,
     accent: "#00D4FF",      // cyan — brand/public
     accentBg: "#00D4FF18",

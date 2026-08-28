@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
-import Map, { Marker, Popup } from 'react-map-gl/maplibre';
+import MapGL, { Marker, Popup } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ticket } from './page';
 import { getImageUrl } from './page';
@@ -15,20 +15,19 @@ const CONTRACTORS: Record<string, string> = {
 // No API Key Required for CartoDB Dark Matter Vector Tiles!
 const styleUrl = `https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json`;
 
-
 export default function MapCore({ tickets }: { tickets: Ticket[] }) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const mapRef = useRef(null);
 
   const clusters = useMemo(() => {
-    const map = new Map<string, Ticket[]>();
+    const ticketMap = new Map<string, Ticket[]>();
     tickets.forEach(t => {
       if (!t.location?.lat) return;
       const key = `${Math.round(t.location.lat * 200)}_${Math.round(t.location.lng * 200)}`;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(t);
+      if (!ticketMap.has(key)) ticketMap.set(key, []);
+      ticketMap.get(key)!.push(t);
     });
-    return Array.from(map.values());
+    return Array.from(ticketMap.values());
   }, [tickets]);
 
   const onMapLoad = useCallback((event: any) => {
@@ -94,7 +93,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
           <div>VIEW_PITCH: 45°</div>
       </div>
 
-      <Map
+      <MapGL
         ref={mapRef}
         initialViewState={{
           longitude: 77.5946, // Bangalore
@@ -105,7 +104,6 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
         }}
         mapStyle={styleUrl}
         onLoad={onMapLoad}
-        antialias={true}
       >
         {clusters.map((cluster, idx) => {
           const centerTicket = cluster[0];
@@ -163,7 +161,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
             <TicketPopup ticket={selectedTicket} />
           </Popup>
         )}
-      </Map>
+      </MapGL>
     </div>
   );
 }

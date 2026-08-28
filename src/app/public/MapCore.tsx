@@ -13,8 +13,8 @@ const CONTRACTORS: Record<string, string> = {
   'Electricity': 'Bescom Grid Ops'
 };
 
-// No API Key Required for CartoDB Dark Matter Vector Tiles!
-const styleUrl = `https://demotiles.maplibre.org/style.json`;
+// Stadia Maps Alidade Smooth Dark - Beautiful tactical vector tiles without API key for local dev
+const styleUrl = `https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json`;
 
 export default function MapCore({ tickets }: { tickets: Ticket[] }) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -52,8 +52,6 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
       const sources = map.getStyle().sources;
       const sourceName = Object.keys(sources).find(k => sources[k].type === 'vector') || 'openmaptiles';
       
-      // In CartoDB, the source-layer is usually 'building' or 'buildings'
-      /*
       map.addLayer({
           'id': '3d-buildings',
           'source': sourceName,
@@ -81,7 +79,6 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
               'fill-extrusion-opacity': 0.85 
           }
       }, labelLayerId);
-      */
     } catch (e) {
       console.warn('Could not add 3D buildings layer. Is the source correct for your style?', e);
     }

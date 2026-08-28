@@ -14,7 +14,7 @@ const CONTRACTORS: Record<string, string> = {
 };
 
 // No API Key Required for CartoDB Dark Matter Vector Tiles!
-const styleUrl = `https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json`;
+const styleUrl = `https://demotiles.maplibre.org/style.json`;
 
 export default function MapCore({ tickets }: { tickets: Ticket[] }) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -99,7 +99,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
       <MapGL
         ref={mapRef}
         mapLib={maplibregl}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: '100vw', height: '100vh' }}
         initialViewState={{
           longitude: 77.5946, // Bangalore
           latitude: 12.9716,
@@ -109,6 +109,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
         }}
         mapStyle={styleUrl}
         onLoad={onMapLoad}
+        onError={(e) => console.error("MapGL Error:", e)}
       >
         {clusters.map((cluster, idx) => {
           const centerTicket = cluster[0];

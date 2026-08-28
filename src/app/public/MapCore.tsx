@@ -46,7 +46,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
 
     const map = new MapLibre({
       container: mapContainer.current,
-      style: 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json',
+      style: 'https://tiles.openfreemap.org/styles/dark',
       center: [77.5946, 12.9716],
       zoom: 14,
       pitch: 45,

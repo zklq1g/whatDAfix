@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { Logo } from "@/components/Logo";
 import {
   Timer,
   AlertTriangle,
@@ -282,14 +283,13 @@ export default function DepartmentPortal() {
         {/* TOP BAR WITH BACK BUTTON */}
         <header className="bg-[#08121A] border-b border-[#1C303B] p-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
-            {currentState > 1 ? (
-              <button onClick={resetToQueue} className="text-[#B5C6CE] hover:text-[#E8F3F7] transition p-1 -ml-1">
+            {currentState > 1 && (
+              <button onClick={resetToQueue} className="text-[#B5C6CE] hover:text-[#E8F3F7] transition p-1 -ml-1 mr-1">
                 <ArrowLeft size={20} />
               </button>
-            ) : (
-              <div className="w-8 h-8 bg-[#00E5FF] rounded-md flex items-center justify-center text-[#050A0F] font-bold">W</div>
             )}
-            <span className="text-[#E8F3F7] font-bold tracking-tight">whatDAfix</span>
+            <Logo className="h-6 w-auto" />
+            <span className="text-[10px] font-bold text-[#FF9F43] uppercase tracking-widest border-l border-[#1C303B] pl-3 ml-1 mt-1">Department</span>
           </div>
           {currentState === 1 && (
             <select 

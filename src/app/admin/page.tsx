@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { Logo } from '@/components/Logo';
 
 const AdminMap = dynamic(() => import('@/components/AdminMap').then(mod => mod.AdminMap), {
   ssr: false,
@@ -247,10 +248,8 @@ export default function AdminCommandCenter() {
       {/* ── Header ── */}
       <header className="flex items-center justify-between mb-6 border-b border-[#1C303B] pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#00D4FF] rounded flex items-center justify-center text-[#050A0F] font-bold text-sm">
-            W
-          </div>
-          <span className="font-mono text-sm text-[#7E939E]">whatDAfix // ADMIN</span>
+          <Logo className="h-6 w-auto" />
+          <span className="font-mono text-sm text-[#7E939E] border-l border-[#1C303B] pl-3 ml-1">// ADMIN</span>
         </div>
 
         <h1 className="text-xl font-bold tracking-widest text-[#00D4FF] uppercase hidden md:block">

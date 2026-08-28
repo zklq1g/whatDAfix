@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+import { Logo } from "@/components/Logo";
 
 // ----------------------------------------------------------------------------------
 // COLOR SYSTEM (Master Palette)
@@ -484,23 +485,9 @@ function TopBar({
       }}
     >
       <div className="flex items-center gap-2">
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center"
-          style={{
-            backgroundColor: "rgba(52, 211, 153, 0.08)",
-            border: "1px solid rgba(52, 211, 153, 0.3)",
-          }}
-        >
-          <span className="text-emerald-400 font-bold text-sm">wD</span>
-        </div>
-        <div className="flex flex-col leading-tight">
-          <span
-            className="text-sm font-semibold tracking-tight"
-            style={{ color: COLORS.textHeading }}
-          >
-            whatDAfix
-          </span>
-          <span className="text-[10px]" style={{ color: COLORS.textMeta }}>
+        <Logo className="h-6 w-auto" />
+        <div className="flex flex-col leading-tight border-l border-[#1C303B] pl-3 ml-1">
+          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
             Citizen Portal
           </span>
         </div>

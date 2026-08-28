@@ -8,6 +8,7 @@ import {
   AlertTriangle, CheckCircle2, Image as ImageIcon, Hash, Building2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { Logo } from '@/components/Logo';
 
 // --- TYPES ---
 export interface Ticket {
@@ -172,8 +173,8 @@ export default function PublicDashboard() {
         {/* Top Left HUD */}
         <div style={{ pointerEvents: 'auto' }} className="absolute top-6 left-6 bg-[#0D1922]/80 backdrop-blur-md border border-[#1C303B] p-4 rounded-lg shadow-2xl">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 bg-[#00E5FF] rounded flex items-center justify-center text-[#050A0F] font-bold">W</div>
-            <span className="text-white font-bold tracking-wide">whatDAfix <span className="text-[#00E5FF]">Public</span></span>
+            <Logo className="h-6 w-auto" />
+            <span className="text-[10px] font-bold text-[#00E5FF] uppercase tracking-widest border-l border-[#1C303B] pl-3 ml-1 mt-1">Public</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
             <Activity size={12} className="text-[#00FF9D] animate-pulse" /> LIVE CITY HEALTH: {tickets.length} Active Nodes

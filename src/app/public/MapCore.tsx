@@ -1,8 +1,12 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Map as MapLibre, Marker, Popup } from 'maplibre-gl';
+import { Map as MapLibre, Marker, Popup, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+
+// Fix Vercel ESM Web Worker 404 issue
+setWorkerUrl('https://unpkg.com/maplibre-gl@6.6.0/dist/maplibre-gl-worker.mjs');
+
 import { Ticket } from './page';
 import { getImageUrl } from './page';
 import { AlertTriangle, CheckCircle2, Clock, Hash, Image as ImageIcon } from 'lucide-react';

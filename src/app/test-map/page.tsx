@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Map as MapLibre } from 'maplibre-gl';
+import { Map as MapLibre, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+
+setWorkerUrl('https://unpkg.com/maplibre-gl@6.6.0/dist/maplibre-gl-worker.mjs');
 
 export default function TestMap() {
   const containerRef = useRef<HTMLDivElement>(null);

@@ -95,28 +95,39 @@ export default function PublicDashboard() {
   if (loading) return <div className="h-screen w-full bg-[#050A0F] flex items-center justify-center text-[#00E5FF] font-mono">DECRYPTING PUBLIC LEDGER...</div>;
 
   return (
-    <div className="h-screen w-full bg-[#050A0F] relative overflow-hidden font-sans">
+    // Root must NOT have overflow-hidden — that clips the WebGL canvas!
+    <div style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, background: '#050A0F' }}>
       
-      {/* 1. The Map Background */}
-      <MapCore tickets={tickets} />
-
-      {/* 2. Top Left HUD */}
-      <div className="absolute top-6 left-6 z-[1000] bg-[#0D1922]/80 backdrop-blur-md border border-[#1C303B] p-4 rounded-lg shadow-2xl">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-8 h-8 bg-[#00E5FF] rounded flex items-center justify-center text-[#050A0F] font-bold">W</div>
-          <span className="text-white font-bold tracking-wide">whatDAfix <span className="text-[#00E5FF]">Public</span></span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
-          <Activity size={12} className="text-[#00FF9D] animate-pulse" /> LIVE CITY HEALTH: {tickets.length} Active Nodes
-        </div>
+      {/* 1. The Map — fullscreen background layer */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+        <MapCore tickets={tickets} />
       </div>
 
-      {/* 3. Top Right ROI Tracker */}
-      <ROITracker value={roiValue} resolvedCount={resolvedCount} />
+      {/* 2. All UI overlays — sit on top of the map */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
 
-      {/* 4. Bottom Left Leaderboard */}
-      <Leaderboard tickets={tickets} isOpen={isLeaderboardOpen} toggle={() => setIsLeaderboardOpen(!isLeaderboardOpen)} />
+        {/* Top Left HUD */}
+        <div style={{ pointerEvents: 'auto' }} className="absolute top-6 left-6 bg-[#0D1922]/80 backdrop-blur-md border border-[#1C303B] p-4 rounded-lg shadow-2xl">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-8 h-8 bg-[#00E5FF] rounded flex items-center justify-center text-[#050A0F] font-bold">W</div>
+            <span className="text-white font-bold tracking-wide">whatDAfix <span className="text-[#00E5FF]">Public</span></span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
+            <Activity size={12} className="text-[#00FF9D] animate-pulse" /> LIVE CITY HEALTH: {tickets.length} Active Nodes
+          </div>
+        </div>
 
+        {/* Top Right ROI Tracker */}
+        <div style={{ pointerEvents: 'auto' }}>
+          <ROITracker value={roiValue} resolvedCount={resolvedCount} />
+        </div>
+
+        {/* Bottom Left Leaderboard */}
+        <div style={{ pointerEvents: 'auto' }}>
+          <Leaderboard tickets={tickets} isOpen={isLeaderboardOpen} toggle={() => setIsLeaderboardOpen(!isLeaderboardOpen)} />
+        </div>
+
+      </div>
     </div>
   );
 }

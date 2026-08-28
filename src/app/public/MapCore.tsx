@@ -44,9 +44,14 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
   useEffect(() => {
     if (mapRef.current || !mapContainer.current) return;
 
+    const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+    const styleUrl = MAPTILER_KEY
+      ? `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`
+      : 'https://tiles.openfreemap.org/styles/dark';
+
     const map = new MapLibre({
       container: mapContainer.current,
-      style: 'https://tiles.openfreemap.org/styles/dark',
+      style: styleUrl,
       center: [77.5946, 12.9716],
       zoom: 14,
       pitch: 45,

@@ -95,6 +95,7 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
 
       <MapGL
         ref={mapRef}
+        style={{ width: '100%', height: '100%' }}
         initialViewState={{
           longitude: 77.5946, // Bangalore
           latitude: 12.9716,

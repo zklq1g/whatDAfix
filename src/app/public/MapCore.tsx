@@ -60,8 +60,8 @@ export default function MapCore({ tickets }: { tickets: Ticket[] }) {
       const map = new MapLibre({
         container: mapContainer.current,
         style: styleUrl,
-        center: [77.5946, 20.9716],
-        zoom: 1.8,
+        center: [80.0, 22.5], // Geographic center of India
+        zoom: 3.8, // Fits India end-to-end with ~10-15% vertical padding on typical screens
         pitch: 15,
         bearing: 0,
       });

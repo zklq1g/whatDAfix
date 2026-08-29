@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
@@ -152,6 +152,96 @@ const MOCK_TICKETS: Ticket[] = [
     proof_of_work_hash: null,
     reporter: { display_name: 'ParkWalk' },
   },
+  {
+    id: '8497',
+    status: 'open',
+    ai_confidence: 0.55,
+    ai_label: 'Graffiti / Vandalism',
+    before_image_url: 'https://images.unsplash.com/photo-1517726354433-25a62e316dce?q=80&w=400&auto=format&fit=crop',
+    after_image_url: null,
+    upvote_count: 3,
+    frt_deadline: new Date().toISOString(),
+    sla_deadline: new Date().toISOString(),
+    wip_started_at: null,
+    resolved_at: null,
+    created_at: new Date().toISOString(),
+    category: null,
+    severity: null,
+    proof_of_work_hash: null,
+    reporter: { display_name: 'MetroGuard' },
+  },
+  {
+    id: '8498',
+    status: 'open',
+    ai_confidence: 0.61,
+    ai_label: 'Clogged Storm Drain',
+    before_image_url: 'https://images.unsplash.com/photo-1541882674902-861f1bc41f9d?q=80&w=400&auto=format&fit=crop',
+    after_image_url: null,
+    upvote_count: 19,
+    frt_deadline: new Date().toISOString(),
+    sla_deadline: new Date().toISOString(),
+    wip_started_at: null,
+    resolved_at: null,
+    created_at: new Date().toISOString(),
+    category: null,
+    severity: null,
+    proof_of_work_hash: null,
+    reporter: { display_name: 'RainWatcher' },
+  },
+  {
+    id: '8499',
+    status: 'open',
+    ai_confidence: 0.49,
+    ai_label: 'Missing Manhole Cover',
+    before_image_url: 'https://images.unsplash.com/photo-1620247953267-3e11559c5d10?q=80&w=400&auto=format&fit=crop',
+    after_image_url: null,
+    upvote_count: 45,
+    frt_deadline: new Date().toISOString(),
+    sla_deadline: new Date().toISOString(),
+    wip_started_at: null,
+    resolved_at: null,
+    created_at: new Date().toISOString(),
+    category: null,
+    severity: null,
+    proof_of_work_hash: null,
+    reporter: { display_name: 'SafetyFirst' },
+  },
+  {
+    id: '8500',
+    status: 'open',
+    ai_confidence: 0.68,
+    ai_label: 'Fallen Tree Branch',
+    before_image_url: 'https://images.unsplash.com/photo-1629853900388-b7eb47792ecf?q=80&w=400&auto=format&fit=crop',
+    after_image_url: null,
+    upvote_count: 12,
+    frt_deadline: new Date().toISOString(),
+    sla_deadline: new Date().toISOString(),
+    wip_started_at: null,
+    resolved_at: null,
+    created_at: new Date().toISOString(),
+    category: null,
+    severity: null,
+    proof_of_work_hash: null,
+    reporter: { display_name: 'EcoCitizen' },
+  },
+  {
+    id: '8501',
+    status: 'open',
+    ai_confidence: 0.42,
+    ai_label: 'Leaking Fire Hydrant',
+    before_image_url: 'https://images.unsplash.com/photo-1585832770485-e68a5dbcf525?q=80&w=400&auto=format&fit=crop',
+    after_image_url: null,
+    upvote_count: 27,
+    frt_deadline: new Date().toISOString(),
+    sla_deadline: new Date().toISOString(),
+    wip_started_at: null,
+    resolved_at: null,
+    created_at: new Date().toISOString(),
+    category: null,
+    severity: null,
+    proof_of_work_hash: null,
+    reporter: { display_name: 'WaterSaver' },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -217,6 +307,7 @@ export default function AdminCommandCenter() {
   const handleRouteManually = async (ticketId: string, dept: string) => {
     if (!dept) return;
     await supabase.from('tickets').update({ category: dept }).eq('id', ticketId);
+    setTickets(prev => prev.filter(t => t.id !== ticketId));
     toast.info(`Ticket #${ticketId} routed to ${dept}.`);
   };
 
@@ -394,7 +485,7 @@ export default function AdminCommandCenter() {
                   Queue Clear. AI handling all tickets.
                 </motion.div>
               ) : (
-                aiFallbackQueue.map(ticket => (
+                aiFallbackQueue.slice(0, 4).map(ticket => (
                   <motion.div
                     key={ticket.id}
                     layout
@@ -597,6 +688,22 @@ function LiveGeoMap({ tickets, slaBreachSimulated, onTicketSelect }: LiveGeoMapP
   };
 
   const hqTicket = tickets.find(t => t.status !== 'rejected') ?? tickets[0] ?? null;
+  const hqTicketRef = useRef(hqTicket);
+
+  useEffect(() => {
+    hqTicketRef.current = hqTicket;
+  }, [hqTicket]);
+
+  const handleHqClick = useCallback(() => {
+    if (hqTicketRef.current) onTicketSelect(hqTicketRef.current);
+  }, [onTicketSelect]);
+
+  const memoizedMap = React.useMemo(() => (
+    <AdminMap
+      slaBreachSimulated={slaBreachSimulated}
+      onHqClick={handleHqClick}
+    />
+  ), [slaBreachSimulated, handleHqClick]);
 
   return (
     <section className="bg-[#0D1922] border border-[#1C303B] rounded-lg flex flex-col overflow-hidden min-h-[380px]">
@@ -610,12 +717,7 @@ function LiveGeoMap({ tickets, slaBreachSimulated, onTicketSelect }: LiveGeoMapP
       
       {/* Map Area — Leaflet renders here */}
       <div className="flex-1 relative bg-[#050A0F] overflow-hidden min-h-[300px]">
-        <AdminMap
-          slaBreachSimulated={slaBreachSimulated}
-          onHqClick={() => {
-            if (hqTicket) onTicketSelect(hqTicket);
-          }}
-        />
+        {memoizedMap}
       </div>
 
       {/* Live Cryptographic Ledger (The Zero-Trust Proof) */}

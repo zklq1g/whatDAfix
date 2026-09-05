@@ -68,9 +68,7 @@ interface ToastState {
 // ----------------------------------------------------------------------------------
 
 const ISSUE_POOL = [
-  { issue: "Pothole", range: [70, 95] as [number, number] },
-  { issue: "Garbage Dump", range: [60, 90] as [number, number] },
-  { issue: "Broken Streetlight", range: [50, 85] as [number, number] },
+  { issue: "Pothole", range: [80, 95] as [number, number] },
 ];
 
 const HIDDEN_TIMEOUT_MS = 30000;
